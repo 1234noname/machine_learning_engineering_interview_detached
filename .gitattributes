@@ -1,0 +1,8 @@
+# Git LFS — catalog dataset + embedding artifact + attribute heads (#090).
+# These live under the storage root /data/ (un-ignored selectively in
+# .gitignore) and are pulled by `just setup` (git lfs pull) so a fresh clone
+# is seed-ready without an out-of-band Fashion200k download. CI does NOT pull
+# LFS (it seeds with AVSA_EMBED_STUB=1) — keeps LFS bandwidth low.
+data/fashion200k/** filter=lfs diff=lfs merge=lfs -text
+data/embeddings/** filter=lfs diff=lfs merge=lfs -text
+data/attribute_heads/** filter=lfs diff=lfs merge=lfs -text
