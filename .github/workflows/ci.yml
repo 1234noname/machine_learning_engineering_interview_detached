@@ -1,5 +1,4 @@
 name: CI
-
 on:
   push:
     branches: ["**"]
@@ -8,19 +7,16 @@ on:
   # Run on the temporary merged branch the merge queue creates so required
   # checks are satisfied before a PR enters the queue.
   merge_group:
-
 # Cancel in-flight runs for the same ref when a new push lands. Only the
 # latest commit needs to pass.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 permissions:
   contents: read
   # gitleaks (security job) calls the GitHub API to list PR commits for
   # scanning; needs read access to the pull-requests resource.
   pull-requests: read
-
 jobs:
   # ---------------------------------------------------------------------------
   # Python — root workspace (libs/avsa-core, libs/avsa-data, tests/)
@@ -47,7 +43,6 @@ jobs:
         # test_workload.py. -m "not slow and not integration and not e2e"
         # keeps this job fast and dependency-free.
         run: uv run pytest -m "not slow and not integration and not e2e"
-
   # ---------------------------------------------------------------------------
   # Python — apps/api (FastAPI service, own uv.lock)
   # ---------------------------------------------------------------------------
@@ -86,7 +81,6 @@ jobs:
           # static value satisfies the startup check in CI.
           AVSA_MCP_API_KEY: "ci-test-key"
         run: uv run pytest -m "not integration and not e2e"
-
   # ---------------------------------------------------------------------------
   # Python — apps/model (ViT embedding service, own uv.lock)
   # ---------------------------------------------------------------------------
@@ -122,7 +116,6 @@ jobs:
           # no GPU required. All unit tests run against this path.
           AVSA_MODEL_STUB: "1"
         run: uv run pytest
-
   # ---------------------------------------------------------------------------
   # Elixir — apps/orchestrator (umbrella)
   # ---------------------------------------------------------------------------
@@ -157,7 +150,6 @@ jobs:
         # test_helper.exs excludes :integration tests — no DB or live services
         # required for this job.
         run: mix test
-
   # ---------------------------------------------------------------------------
   # Rust — crates/batcher
   # ---------------------------------------------------------------------------
@@ -179,7 +171,6 @@ jobs:
         run: cargo clippy --manifest-path crates/batcher/Cargo.toml --all-targets -- -D warnings
       - name: cargo test
         run: cargo test --manifest-path crates/batcher/Cargo.toml
-
   # ---------------------------------------------------------------------------
   # Frontend — apps/shopper + packages/shared (pnpm workspace)
   # ---------------------------------------------------------------------------
@@ -216,7 +207,6 @@ jobs:
       - name: Test
         working-directory: frontend
         run: pnpm --filter @avsa/shopper run test
-
   # ---------------------------------------------------------------------------
   # Python — integration tests (tests/integration/, requires live Postgres)
   # ---------------------------------------------------------------------------
@@ -234,10 +224,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U avsa -d avsa"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-cmd "pg_isready -U avsa -d avsa" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://avsa:avsa@localhost:5432/avsa
     steps:
@@ -255,7 +242,6 @@ jobs:
         # they run. The seeded_catalog_db fixture seeds 100 rows per test inside a
         # transaction and rolls back at teardown — no persistent state between tests.
         run: uv run pytest tests/integration -v
-
   # ---------------------------------------------------------------------------
   # Elixir — integration tests (@tag :integration, requires live Postgres)
   # ---------------------------------------------------------------------------
@@ -273,10 +259,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U avsa -d avsa"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-cmd "pg_isready -U avsa -d avsa" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       MIX_ENV: test
       # runtime.exs: DATABASE_URL set → start_repo: true + Ecto SQL.Sandbox pool.
@@ -305,7 +288,6 @@ jobs:
         run: bash infra/migrations/migrate.sh
       - name: Run integration tests
         run: mix test --only integration
-
   # ---------------------------------------------------------------------------
   # E2E — full stack (postgres, toxiproxy, model, batcher, orchestrator,
   #        api, shopper) + Python E2E tests + Playwright browser tests
@@ -324,10 +306,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U avsa -d avsa"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-cmd "pg_isready -U avsa -d avsa" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://avsa:avsa@localhost:5432/avsa
       # AVSA_LLM_STUB=1 replaces the Anthropic LLM with the in-process mock so
@@ -346,8 +325,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          lfs: true
-
+          lfs: false
+      - name: Pull required LFS objects
+        # Pull only the two trees CI actually needs (embeddings artifact for
+        # catalog seeding, attribute heads for the model). Excludes
+        # data/fashion200k/** (~150 MB) which is only needed for local dev
+        # (pulled by `just setup` → `git lfs pull` on a fresh clone).
+        run: git lfs pull --include="data/attribute_heads/**,data/embeddings/**"
       # ── Runtime setup ──────────────────────────────────────────────────────
       - name: Set up uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -372,7 +356,6 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-
       # ── Install dependencies ───────────────────────────────────────────────
       - name: uv sync (root workspace)
         run: uv sync --frozen
@@ -388,7 +371,6 @@ jobs:
       - name: pnpm install
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-
       # ── Build ──────────────────────────────────────────────────────────────
       - name: Build batcher (Rust release)
         run: cargo build --release --manifest-path crates/batcher/Cargo.toml
@@ -415,7 +397,6 @@ jobs:
             apps/shopper/.next/standalone/apps/shopper/.next/static
           cp -r apps/shopper/public \
             apps/shopper/.next/standalone/apps/shopper/public
-
       # ── Database ───────────────────────────────────────────────────────────
       - name: Generate config
         run: uv run python scripts/config-gen.py ci
@@ -428,7 +409,6 @@ jobs:
         # AVSA_EMBED_STUB is not needed for fashion200k; embeddings are
         # pre-computed — no live ViT calls are made.
         run: uv run python scripts/seed-catalog.py
-
       # ── Toxiproxy (circuit-breaker tests in metrics-instrumentation.spec.ts)
       - name: Start Toxiproxy
         # --add-host resolves host.docker.internal to the Docker gateway IP so
@@ -453,7 +433,6 @@ jobs:
           curl -sf -X POST http://localhost:8474/populate \
             -H "Content-Type: application/json" \
             -d '[{"name":"batcher","listen":"0.0.0.0:18081","upstream":"host.docker.internal:8081","enabled":true}]'
-
       # ── Start services ─────────────────────────────────────────────────────
       - name: Start model service
         # AVSA_MODEL_STUB=1: deterministic stub embeddings + stub attributes.
@@ -487,7 +466,6 @@ jobs:
           PORT=3000 AVSA_API_URL=http://localhost:8080 \
             node frontend/apps/shopper/.next/standalone/apps/shopper/server.js \
             >/tmp/avsa-logs/shopper.log 2>&1 &
-
       # ── Health gates ───────────────────────────────────────────────────────
       - name: Wait for model (:8090)
         run: |
@@ -533,22 +511,18 @@ jobs:
             sleep 1
           done
           echo "ERROR: shopper not ready on :3000 after 60s" >&2; exit 1
-
       # ── Tests ──────────────────────────────────────────────────────────────
       - name: Python E2E tests
         env:
           AVSA_E2E: "1"
           AVSA_E2E_MCP_KEY: "e2e-test-key-not-a-secret"
         run: uv run pytest tests/e2e/ -m e2e -v
-
       - name: Install Playwright browsers
         working-directory: frontend/apps/shopper
         run: npx playwright install --with-deps chromium
-
       - name: Playwright E2E tests
         working-directory: frontend/apps/shopper
         run: npx playwright test
-
       # ── Artifacts (always collected, uploaded on failure) ─────────────────
       - name: Collect service logs
         if: failure()
@@ -571,7 +545,6 @@ jobs:
           name: playwright-report-${{ github.run_id }}
           path: frontend/apps/shopper/playwright-report/
           retention-days: 7
-
   # ---------------------------------------------------------------------------
   # uv lockfile integrity — catches pyproject.toml changes not reflected in
   # uv.lock (e.g. a dep bump that wasn't followed by `uv lock`).
@@ -589,7 +562,6 @@ jobs:
           enable-cache: true
       - name: uv lock --check
         run: uv lock --check
-
   # ---------------------------------------------------------------------------
   # Doc drift — README setup section references only `just` recipes that exist
   # in the justfile. Catches stale quick-start instructions.
@@ -603,7 +575,6 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Run doc-drift check
         run: bash scripts/check-doc-drift.sh
-
   # ---------------------------------------------------------------------------
   # OpenAPI spec — validates specs/api/chat.openapi.yaml is well-formed
   # OpenAPI 3.1. Catches syntax errors and broken $ref chains.
@@ -619,7 +590,6 @@ jobs:
         uses: ./.github/actions/setup-python
       - name: openapi-spec-validator
         run: uv run openapi-spec-validator specs/api/chat.openapi.yaml
-
   # ---------------------------------------------------------------------------
   # Proto lint — buf lint validates specs/orchestrator/avsa.proto follows the
   # configured style rules (buf.yaml). Catches naming violations before codegen.
@@ -638,7 +608,6 @@ jobs:
       - name: buf lint
         working-directory: specs/orchestrator
         run: buf lint
-
   # ---------------------------------------------------------------------------
   # Proto codegen — regenerates apps/orchestrator/apps/avsa/lib/avsa/proto/
   # avsa.pb.ex from specs/orchestrator/avsa.proto and fails if the committed
@@ -666,7 +635,6 @@ jobs:
         run: PATH="${HOME}/.mix/escripts:${PATH}" buf generate specs/orchestrator
       - name: Check for drift
         run: git diff --exit-code apps/orchestrator/apps/avsa/lib/avsa/proto/avsa.pb.ex
-
   # ---------------------------------------------------------------------------
   # Frontend codegen drift — regenerates frontend/packages/shared/src/generated.ts
   # from specs/api/chat.openapi.yaml and fails if the committed file differs.
@@ -697,7 +665,6 @@ jobs:
         run: pnpm --filter @avsa/shared run generate
       - name: Check for drift
         run: git diff --exit-code frontend/packages/shared/src/generated.ts
-
   # ---------------------------------------------------------------------------
   # Security — pip-audit (Python deps) + gitleaks (secrets scan)
   # ---------------------------------------------------------------------------
