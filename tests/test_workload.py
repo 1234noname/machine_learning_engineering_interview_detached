@@ -239,10 +239,16 @@ class TestQueryMixConfig:
 
         # The locustfile scales floats * 100 and rounds; verify the round-trip.
         scale = 100
-        assert round(cfg_entry["image_only_weight"] * scale) == locustfile._TW_IMAGE_ONLY
+        assert (
+            round(cfg_entry["image_only_weight"] * scale) == locustfile._TW_IMAGE_ONLY
+        )
         assert round(cfg_entry["text_only_weight"] * scale) == locustfile._TW_TEXT_ONLY
-        assert round(cfg_entry["image_text_weight"] * scale) == locustfile._TW_IMAGE_TEXT
-        assert round(cfg_entry["multi_turn_weight"] * scale) == locustfile._TW_MULTI_TURN
+        assert (
+            round(cfg_entry["image_text_weight"] * scale) == locustfile._TW_IMAGE_TEXT
+        )
+        assert (
+            round(cfg_entry["multi_turn_weight"] * scale) == locustfile._TW_MULTI_TURN
+        )
 
     def test_load_chat_embed_weights_rejects_nonunit_sum(self) -> None:
         """_load_chat_embed_weights raises ValueError when weights don't sum to 1.0."""
@@ -274,17 +280,13 @@ class TestTaskSetRegistration:
         """ChatUser must be importable from the root locustfile."""
         import locustfile
 
-        assert hasattr(locustfile, "ChatUser"), (
-            "locustfile must define ChatUser"
-        )
+        assert hasattr(locustfile, "ChatUser"), "locustfile must define ChatUser"
 
     def test_embed_user_class_exists(self) -> None:
         """EmbedUser must be importable from the root locustfile."""
         import locustfile
 
-        assert hasattr(locustfile, "EmbedUser"), (
-            "locustfile must define EmbedUser"
-        )
+        assert hasattr(locustfile, "EmbedUser"), "locustfile must define EmbedUser"
 
     def test_batcher_user_class_still_exists(self) -> None:
         """BatcherUser must still be present (not replaced by chat_embed work)."""
@@ -331,9 +333,7 @@ class TestTaskSetRegistration:
         """ChatUser must configure a wait_time (not None)."""
         import locustfile
 
-        assert locustfile.ChatUser.wait_time is not None, (
-            "ChatUser must set wait_time"
-        )
+        assert locustfile.ChatUser.wait_time is not None, "ChatUser must set wait_time"
 
     def test_embed_user_has_constant_0_wait_time(self) -> None:
         """EmbedUser must saturate the endpoint (constant(0) wait_time)."""
@@ -342,9 +342,7 @@ class TestTaskSetRegistration:
         # constant(0) returns a callable returning 0 for any user.
         user = locustfile.EmbedUser.__new__(locustfile.EmbedUser)
         wait = locustfile.EmbedUser.wait_time(user)
-        assert wait == 0, (
-            "EmbedUser.wait_time must return 0 (saturate the endpoint)"
-        )
+        assert wait == 0, "EmbedUser.wait_time must return 0 (saturate the endpoint)"
 
 
 # ===========================================================================
@@ -424,9 +422,7 @@ class TestRealisticImageSizes:
         import locustfile
 
         for method_name in ("image_only", "image_text", "multi_turn"):
-            source = inspect.getsource(
-                getattr(locustfile.ChatUser, method_name)
-            )
+            source = inspect.getsource(getattr(locustfile.ChatUser, method_name))
             assert "_JPEG_1PX" not in source and "_ONE_PIXEL_JPEG_B64" not in source, (
                 f"ChatUser.{method_name} must not reference the 1-px fixture"
             )

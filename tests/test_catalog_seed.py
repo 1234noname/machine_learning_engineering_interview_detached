@@ -28,10 +28,10 @@ from machine_learning_engineering_interview import catalog_seed
 def _copy_rows() -> Callable[..., int]:
     """``catalog_seed.copy_rows`` fetched dynamically.
 
-    Accessed via ``getattr`` so this test file can pass the repo-root mypy gate
-    *before* ``copy_rows`` grows its new ``include_text_embedding`` keyword
-. Once implemented the signature change is statically visible to
-    callers in production; the test deliberately stays loose here.
+        Accessed via ``getattr`` so this test file can pass the repo-root mypy gate
+        *before* ``copy_rows`` grows its new ``include_text_embedding`` keyword
+    . Once implemented the signature change is statically visible to
+        callers in production; the test deliberately stays loose here.
     """
     return cast("Callable[..., int]", getattr(catalog_seed, "copy_rows"))  # noqa: B009
 

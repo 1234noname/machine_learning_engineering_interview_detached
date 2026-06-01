@@ -10,8 +10,8 @@ info:
     this file and a running service is a CI failure.
 
     The external MCP tool surface (find_similar / extract_attributes) is NOT
-    served here — it is the conformant JSON-RPC server (AVSA.MCP.Server, issue
-), described by `specs/mcp/tools.json` and the MCP JSON-RPC protocol.
+    served here — it is the conformant JSON-RPC server (AVSA.MCP.Server),
+    described by `specs/mcp/tools.json` and the MCP JSON-RPC protocol.
 servers:
   - url: http://localhost:8080
     description: Local development gateway.
@@ -244,8 +244,8 @@ components:
           type: [string, "null"]
           format: binary
           description: >
-            Optional image file (PNG, JPEG, or WebP) uploaded by the shopper.
-            May be omitted for text-only turns.
+            Optional image file (PNG, JPEG, or WebP) uploaded by the shopper. May be omitted for text-only turns.
+
         text:
           type: [string, "null"]
           description: Optional free-text prompt. Required when image is absent.

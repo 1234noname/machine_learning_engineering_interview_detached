@@ -534,9 +534,7 @@ def load_image_b64(image_path: str | None) -> tuple[str, str]:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "Recorded external-agent MCP discovery loop (, Thread B)."
-        ),
+        description=("Recorded external-agent MCP discovery loop (, Thread B)."),
     )
     parser.add_argument(
         "--url",

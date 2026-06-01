@@ -1,4 +1,4 @@
-""" optimisation sweep runner.
+"""optimisation sweep runner.
 
 Runs the model-direct bench across ``{fp32, fp16, compile}`` on one
 device tier and turns each step into a MEASURED frontier row. Every non-baseline

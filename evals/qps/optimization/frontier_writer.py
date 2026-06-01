@@ -1,4 +1,4 @@
-""" measured-frontier writer.
+"""measured-frontier writer.
 
 Turns measured per-device sweep rows (from
 ``evals.qps.optimization.optimization_sweep.run_optimization_sweep``) into the

@@ -196,7 +196,7 @@ class TestBootstrapWorkflow:
 
     def test_weekly_cron(self, workflow: str) -> None:
         # `0 6 * * 1` = 06:00 UTC every Monday — the polyglot cold-clone cadence
-        #. The cron field is quoted in workflow YAML, so allow either style.
+        # . The cron field is quoted in workflow YAML, so allow either style.
         assert re.search(r"""cron:\s*['"]0 6 \* \* 1['"]""", workflow), (
             "bootstrap.yml must schedule cron '0 6 * * 1' (Monday 06:00 UTC)"
         )
