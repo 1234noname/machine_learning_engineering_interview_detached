@@ -15,6 +15,16 @@ from httpx import ASGITransport, AsyncClient
 
 _REAL_KEY = "fashion200k/images/women/tops/sleeveless_and_tank_tops/91268533/91268533_0.jpeg.jpg"
 
+_JPEG_MAGIC = b"\xff\xd8"
+
+
+def _is_real_image(path: Path) -> bool:
+    """True only when path holds actual image bytes, not a Git LFS pointer file."""
+    if not path.exists():
+        return False
+    with path.open("rb") as fh:
+        return fh.read(2) == _JPEG_MAGIC
+
 
 # ---------------------------------------------------------------------------
 # CWD-independence of _build_backend
@@ -85,7 +95,7 @@ def test_get_object_succeeds_from_non_repo_cwd(tmp_path: Path) -> None:
     """
     repo_root = _repo_root()
     real_file = repo_root / "data" / _REAL_KEY
-    if not real_file.exists():
+    if not _is_real_image(real_file):
         pytest.skip(f"Fashion200k test image not present at {real_file}; skipping real-data test")
 
     config = load_config_raw()
@@ -163,7 +173,7 @@ async def test_images_route_200_real_key(
 
     repo_root = _repo_root()
     real_file = repo_root / "data" / _REAL_KEY
-    if not real_file.exists():
+    if not _is_real_image(real_file):
         pytest.skip(f"Fashion200k test image not present at {real_file}; skipping integration test")
 
     signed = backend.signed_url(_REAL_KEY, ttl_s=60)
