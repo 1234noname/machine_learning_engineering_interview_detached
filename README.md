@@ -6,6 +6,8 @@ A conversational, image- and text-driven product search system over the [Fashion
 
 Briefly, AVSA allows one to browse from amongst 5000 fashion images and use a combination of images and text to filter and find what one is looking for. The hosted demo can be found [here](http://34.171.72.185/) and metrics from your interactions will show up in the linked Grafana dashboard. Please note that there is a fixed, demo-sized query budget attached to the hosted app so chances are if it stops working then that budget has been spent :)
 
+## Quick start
+
 To run this project yourself:
 ```
 just setup # will pull in data/ from git LFS
@@ -95,12 +97,12 @@ Browser (Next.js shopper) ──HTTP/SSE──▶ API (FastAPI)
 
 | Doc | Covers |
 |---|---|
-| [`2.ARCHITECTURE.md`](./2.ARCHITECTURE.md) | Service-by-service tour, protocols, deployment topology |
-| [`3.QPS.md`](./3.QPS.md) | The QPS analysis: roofline, raw-vs-system frontier, measurement methodology |
-| [`4.MCP.md`](./4.MCP.md) | MCP surface: tool design, JSON-RPC server, input screening, manifest drift check |
-| [`5.API.md`](./5.API.md) | The FastAPI public edge: `/chat`, `/catalog`, `/images`, rate limiting |
-| [`6.FRONTEND.md`](./6.FRONTEND.md) | Next.js shopper app, SSE streaming, the e2e and accessibility posture |
-| [`7.DATABASE.md`](./7.DATABASE.md) | Postgres + pgvector schema, HNSW indexes, migration policy, deployment posture |
+| [`1.ARCHITECTURE.md`](./1.ARCHITECTURE.md) | Service-by-service tour, protocols, deployment topology |
+| [`2.QPS.md`](./2.QPS.md) | The QPS analysis: roofline, raw-vs-system frontier, measurement methodology |
+| [`3.MCP.md`](./3.MCP.md) | MCP surface: tool design, JSON-RPC server, input screening, manifest drift check |
+| [`4.API.md`](./4.API.md) | The FastAPI public edge: `/chat`, `/catalog`, `/images`, rate limiting |
+| [`5.FRONTEND.md`](./5.FRONTEND.md) | Next.js shopper app, SSE streaming, the e2e and accessibility posture |
+| [`6.DATABASE.md`](./6.DATABASE.md) | Postgres + pgvector schema, HNSW indexes, migration policy, deployment posture |
 
 ## Disclaimer: Use of AI
 
