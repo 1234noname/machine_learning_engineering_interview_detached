@@ -1,0 +1,62 @@
+# Production overlay — deep-merged on top of avsa.base.toml by `just config-gen prod`.
+# Secrets (DB password, API keys) are never in this file — they come from Secret Manager
+# via Kubernetes env vars. Only structural config that differs from the CI-safe base belongs here.
+
+[api]
+# In-cluster Kubernetes service names (ClusterIP, port 80).
+# AVSA_BATCHER_URL and AVSA_MODEL_URL env vars take precedence at runtime
+# (set in the avsa-env secret); these values serve as the TOML-layer default
+# for any code path that reads config rather than env directly.
+batcher_url = "http://batcher-service"
+
+[batcher]
+# In-cluster Kubernetes service name; AVSA_VIT_URL env var takes precedence at runtime.
+# For local-vs-Modal bench runs, override here and regenerate with `just config-gen prod`.
+vit_service_url = "https://erinversfeldcodes--avsa-model-avsamodel-embed-http.modal.run"
+# 5 drain tasks → up to 5 concurrent Modal GPU containers (max_containers=5).
+# N=3 was optimal for c≤256 bench workload; keeping N=5 for higher-concurrency
+# experiments. See docs/qps-optimisation.md §3b–§3d.
+num_drain_tasks = 6
+
+[catalog]
+# Prod catalog seed count — Fashion200k full 5k subset.
+seed_count = 5000
+
+[model]
+# CUDA inference on prod GPU.
+device = "cuda"
+use_compile = true
+use_fp16 = true
+# use_ort measured in §3l — net negative vs torch.compile+CUDA graphs. Reverted.
+use_ort = false
+# bf16 measured in §3k — regressed −21.8% at bs=24 vs fp16. A10G cuBLAS/cuDNN
+# kernels are better optimised for fp16 at ViT-B FFN GEMM sizes. Reverted.
+use_bf16 = false
+# TRT engine measured in §3m — net negative vs torch.compile+CUDA graphs. Reverted.
+# Dynamic batch profiles add per-call shape-lookup overhead; static engines per batch
+# size would require ~60s/engine × 24 = 24-min container start, unacceptable.
+use_trt = false
+# reduce-overhead (CUDA graphs) is the prod default. max-autotune was tested (§3h)
+# and regressed −10.5% at bs=24 with higher p95 variance; reverted.
+# torch_tensorrt: TRT tactic selection via torch.compile backend. Tested in §3n —
+# net negative (bs=8: −29%, bs=24: −31%, p95 spikes); reverted.
+compile_mode = "reduce-overhead"
+# sdpa: PyTorch scaled_dot_product_attention (mem_efficient backend on this image —
+# flash-attn is not installed). FA2 measured in §3j; net-neutral for ViT-B/16.
+attn_implementation = "sdpa"
+
+[bench.prod]
+# Override the base [bench.prod] concurrency sweep. Low levels (c=8–32) only
+# exercise 1–2 drain tasks and produce misleading warm-up data; starting at
+# c=64 ensures all drain tasks fire from the first measurement point. c=512
+# extends the upper range to catch the throughput ceiling for N>3 configs.
+concurrency_levels = [256, 512, 1024, 2048]
+spawn_rate = 256
+
+[bench.model]
+# Prod in-memory model benchmark overrides.
+# n_passes=100 for tighter confidence intervals on prod GPU measurement.
+# batch_sizes includes bs=24 (batcher max_batch_size) so we can observe
+# GPU efficiency at full batch load vs single-image requests.
+n_passes = 100
+batch_sizes = [1, 8, 24]

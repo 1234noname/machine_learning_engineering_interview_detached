@@ -1,0 +1,22 @@
+# Variable values for `terraform plan` / `apply`.
+# Copy to `terraform.tfvars` (gitignored) and fill in.
+#
+# Alternative: skip the file entirely and set environment variables —
+# Terraform reads `TF_VAR_<name>` automatically. With direnv:
+#
+#   # .env (gitignored)
+#   TF_VAR_project_id=avsa-stg
+#   TF_VAR_region=us-central1
+#
+#   $ direnv allow .
+#   $ terraform plan        # picks up TF_VAR_* without a tfvars file
+#
+# In CI (GitHub Actions), GH Secrets become TF_VAR_* via the workflow's
+# env: block — see .github/workflows/staging-deploy.yml (Phase 2).
+
+project_id = "avsa-stg"
+region     = "us-central1"
+
+# Optional overrides — defaults are correct for the canonical AVSA setup:
+# github_repository       = "erinversfeldcodes/avsa"
+# github_repository_owner = "erinversfeldcodes"

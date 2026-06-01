@@ -1,0 +1,39 @@
+# Production values overlay. Applied on top of values.yaml.
+# Image tags must be replaced with digest-pinned values before deploy
+# (format: repository@sha256:<digest>). The placeholder below will fail
+# helm install — replace with actual digest from `docker inspect` output.
+
+image_api:
+  repository: REGION-docker.pkg.dev/PROJECT_ID/avsa/api
+  tag: "REPLACE_WITH_DIGEST"
+  pullPolicy: IfNotPresent
+
+image_model:
+  repository: REGION-docker.pkg.dev/PROJECT_ID/avsa/model
+  tag: "REPLACE_WITH_DIGEST"
+  pullPolicy: IfNotPresent
+
+image_batcher:
+  repository: REGION-docker.pkg.dev/PROJECT_ID/avsa/batcher
+  tag: "REPLACE_WITH_DIGEST"
+  pullPolicy: IfNotPresent
+
+image_orchestrator:
+  repository: REGION-docker.pkg.dev/PROJECT_ID/avsa/orchestrator
+  tag: "REPLACE_WITH_DIGEST"
+  pullPolicy: IfNotPresent
+
+image_shopper:
+  repository: REGION-docker.pkg.dev/PROJECT_ID/avsa/shopper
+  tag: "REPLACE_WITH_DIGEST"
+  pullPolicy: IfNotPresent
+
+batcher:
+  vitServiceUrl: "https://erinversfeldcodes--avsa-model-avsamodel-embed-http.modal.run"
+  maxBatchSize: 24      # match config/avsa.toml [batcher] max_batch_size; was 8 in values.yaml default
+  numDrainTasks: 6      # 6 drain tasks → up to 6 concurrent Modal GPU containers (max_containers=6, min_containers=5 on AvsaModel)
+
+# GPU resources and nodeSelector intentionally omitted — model runs on CPU.
+# GPU quota is not available in this project's zone. Add back once quota is
+# confirmed: resources.model.{requests,limits}.nvidia.com/gpu: "1" and
+# nodeSelector.model.cloud.google.com/gke-accelerator: nvidia-tesla-t4

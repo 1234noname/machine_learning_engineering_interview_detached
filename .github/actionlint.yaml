@@ -1,0 +1,18 @@
+self-hosted-runner:
+  labels: []
+config-variables: null
+# Composite action files under .github/actions/ use the action schema, not
+# the workflow schema. actionlint only understands workflow files, so when
+# action.yml is passed as an explicit argument it reports spurious
+# syntax-check errors. Suppress them here so `actionlint action.yml` exits 0.
+paths:
+  # Match composite action files regardless of the cwd from which actionlint
+  # is invoked. The path key is matched against the path relative to cwd, so
+  # the fragment below anchors on the actions/ sub-tree without requiring a
+  # specific leading prefix. Composite actions do not have "on"/"jobs" keys;
+  # those spurious workflow-schema errors are suppressed here.
+  "**/.github/actions/**/*.yml":
+    ignore:
+      - '"on" section is missing in workflow'
+      - '"jobs" section is missing in workflow'
+      - 'unexpected key .* for "workflow" section'

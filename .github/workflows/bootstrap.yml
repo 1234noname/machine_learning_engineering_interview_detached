@@ -1,0 +1,44 @@
+name: Bootstrap
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+# Cancel in-flight runs for the same ref when a new push lands.
+concurrency:
+  group: bootstrap-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - name: Install just
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf \
+            https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+      - name: Bootstrap
+        run: just bootstrap
+      - name: Test
+        run: just test
+      - name: Assert elapsed under budget
+        run: |
+          set -euo pipefail
+          BUDGET_SECONDS=1500
+          if [[ "${SECONDS}" -gt "${BUDGET_SECONDS}" ]]; then
+            echo "ERROR: bootstrap+test took ${SECONDS}s, exceeds budget of ${BUDGET_SECONDS}s" >&2
+            exit 1
+          fi
+          echo "bootstrap+test completed in ${SECONDS}s (budget: ${BUDGET_SECONDS}s)"

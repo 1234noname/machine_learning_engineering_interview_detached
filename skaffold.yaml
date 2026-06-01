@@ -19,21 +19,21 @@ build:
         dockerfile: dockerfiles/Dockerfile.api
       sync:
         infer:
-          - 'machine_learning_engineering_interview/api.py'
+          - "machine_learning_engineering_interview/api.py"
     - image: model
       context: .
       docker:
         dockerfile: dockerfiles/Dockerfile.model
       sync:
         infer:
-          - 'machine_learning_engineering_interview/model.py'
+          - "machine_learning_engineering_interview/model.py"
     - image: loadtest
       context: .
       docker:
         dockerfile: dockerfiles/Dockerfile.loadtest
       sync:
         infer:
-          - 'machine_learning_engineering_interview/loadtest.py'
+          - "machine_learning_engineering_interview/loadtest.py"
 manifests:
   helm:
     releases:
@@ -42,6 +42,7 @@ manifests:
         chartPath: helm
         valuesFiles:
           - helm/values.yaml
+          - helm/values.local.yaml
         setValueTemplates:
           image_api.repository: "{{.IMAGE_REPO_api}}"
           image_api.tag: "{{.IMAGE_TAG_api}}"

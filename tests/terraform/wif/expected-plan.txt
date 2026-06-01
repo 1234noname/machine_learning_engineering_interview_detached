@@ -1,0 +1,98 @@
+Expected `terraform plan` output for `infra/terraform/environments/dev/` (issue #5 + #5-A)
+==========================================================================================
+
+This is the test contract for the WIF module. Run from any environment dir
+(dev / staging / prod) and diff the output of `terraform plan -no-color`
+against this file before applying. Material divergence (new resource types,
+removed resources, changed security guards) needs review.
+
+Resources are addressed via the `module.wif.` prefix because each
+environment calls the shared module at `../../modules/wif/`.
+
+The plan was last updated against module commit:
+  <FILL IN AFTER FIRST APPLY: terraform plan -no-color | tail -N>
+
+The plan is captured here as a human-readable enumeration rather than
+the raw `terraform plan` text because (a) the agent that drafted this
+doesn't have GCP credentials to run plan against a live project, and
+(b) the raw output contains generated IDs that drift between accounts.
+
+
+Resources to be created (3 + 4 = 7 total)
+-----------------------------------------
+
+# module.wif.google_project_service.required["iam.googleapis.com"]
+# module.wif.google_project_service.required["iamcredentials.googleapis.com"]
+# module.wif.google_project_service.required["cloudresourcemanager.googleapis.com"]
+  Three API enablements. Each `disable_on_destroy = false` so destroying
+  this module does NOT disable the API in shared projects.
+
+# module.wif.google_iam_workload_identity_pool.github
+  workload_identity_pool_id = "github"
+  display_name              = "GitHub Actions"
+  Trust container for inbound OIDC tokens.
+
+# module.wif.google_iam_workload_identity_pool_provider.github
+  workload_identity_pool_provider_id = "github"
+  attribute_mapping = {
+    google.subject       = assertion.sub
+    attribute.repository = assertion.repository
+    attribute.actor      = assertion.actor
+    attribute.ref        = assertion.ref
+  }
+  attribute_condition = "assertion.repository_owner == \"erinversfeldcodes\""
+  oidc.issuer_uri     = "https://token.actions.githubusercontent.com"
+
+  SECURITY GUARD #1: attribute_condition gates token issuance to the
+  configured GitHub org. Removing it would let any GitHub OIDC token
+  from any org trade for credentials in this pool.
+
+# module.wif.google_service_account.github_deployer
+  account_id   = "github-deployer"
+  display_name = "GitHub Actions deployer"
+
+# module.wif.google_service_account_iam_binding.github_deployer_wif
+  role    = "roles/iam.workloadIdentityUser"
+  members = [
+    "principalSet://iam.googleapis.com/<pool>/attribute.repository/erinversfeldcodes/avsa",
+  ]
+
+  SECURITY GUARD #2: principalSet is scoped to a single repository
+  (`erinversfeldcodes/avsa`). A broader binding (e.g. on
+  `attribute.repository_owner/erinversfeldcodes`) would let any repo in
+  the org impersonate the deployer. Keep this scoped to one repo.
+
+# module.wif.google_project_iam_member.deployer_token_creator
+  role   = "roles/iam.serviceAccountTokenCreator"
+  member = "serviceAccount:github-deployer@<project>.iam.gserviceaccount.com"
+
+  SECURITY GUARD #3: this is the ONLY project-level role the deployer
+  receives in this PR. Track B issues add narrower bindings (e.g.
+  roles/container.developer at the GKE-cluster level, not the project)
+  as those subsystems land. Resist granting broader project-level roles.
+
+  tfsec/checkov flag this as a project-level token-creator (CKV_GCP_41/49
+  + tfsec google-iam-no-project-level-service-account-impersonation);
+  suppressions documented inline in wif.tf.
+
+
+Resources to be modified
+------------------------
+
+  None on a fresh apply.
+
+
+Resources to be destroyed
+-------------------------
+
+  None on a fresh apply.
+
+
+Outputs
+-------
+
+  github_deployer_email = "github-deployer@<project>.iam.gserviceaccount.com"
+  wif_provider_url      = "projects/<project-num>/locations/global/workloadIdentityPools/github/providers/github"
+
+  Both are consumed by `.github/workflows/deploy.yml` (#6) via the
+  GitHub Actions repository secrets WIF_SERVICE_ACCOUNT and WIF_PROVIDER.

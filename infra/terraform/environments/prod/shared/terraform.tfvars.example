@@ -1,0 +1,16 @@
+# Variable values for `terraform plan` / `apply` against the prod env.
+# Copy to `terraform.tfvars` (gitignored) and fill in.
+#
+# Alternative: set `TF_VAR_project_id` env var (e.g. via direnv).
+
+project_id = "avsa-prd"
+region     = "us-central1"
+
+# SA emails for cross-environment deploy-events bucket write access.
+# Format is deterministic from modules/wif — account_id is always "github-deployer".
+dev_deployer_sa_email     = "github-deployer@avsa-dev-1.iam.gserviceaccount.com"
+staging_deployer_sa_email = "github-deployer@avsa-stg.iam.gserviceaccount.com"
+
+# Optional overrides — defaults are correct for the canonical AVSA setup:
+# github_repository       = "erinversfeldcodes/avsa"
+# github_repository_owner = "erinversfeldcodes"

@@ -1,0 +1,19 @@
+image_api:
+  pullPolicy: Always
+image_model:
+  pullPolicy: Always
+# GPU resources and nodeSelector disabled — GCE T4 quota not available.
+# Re-enable when quota is confirmed:
+#   resources.model.{limits,requests}.nvidia.com/gpu: "1"
+#   nodeSelector.model.cloud.google.com/gke-accelerator: nvidia-tesla-t4
+ingress:
+  enabled: true
+  className: gce
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: avsa-ingress
+
+monitoring:
+  enabled: true
+
+shopper:
+  serviceType: LoadBalancer

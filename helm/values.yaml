@@ -1,9 +1,64 @@
 image_api:
   repository: api
-  tag: latest
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
 image_model:
   repository: model
-  tag: latest
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+image_batcher:
+  repository: batcher
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+image_orchestrator:
+  repository: orchestrator
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+image_shopper:
+  repository: shopper
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
 image_loadtest:
   repository: loadtest
-  tag: latest
+  tag: ""
+  digest: ""
+loadtest:
+  enabled: false
+nodeSelector:
+  model: {}
+resources:
+  model:
+    requests:
+      nvidia.com/gpu: 0
+    limits:
+      nvidia.com/gpu: 0
+batcher:
+  # Modal A10G GPU model endpoint. Overrides the baked-in config/avsa.toml
+  # default (localhost:8090) so the GKE Rust batcher calls Modal for inference
+  # instead of a local model service.
+  vitServiceUrl: "http://localhost:8090/embed"
+  maxBatchSize: 8
+  maxWaitMs: 50
+  # Modal A10G cold start (~10–15 s) + inference headroom. Local default is 30 s.
+  vitTimeoutMs: 30000
+  serviceType: LoadBalancer
+
+shopper:
+  apiUrl: "http://api-service"
+monitoring:
+  enabled: false
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+tls:
+  # TLS termination at the GCE load balancer level is not yet configured.
+  # When ready: set enabled: true, secretName, and add a Certificate resource.
+  enabled: false
+  secretName: ""

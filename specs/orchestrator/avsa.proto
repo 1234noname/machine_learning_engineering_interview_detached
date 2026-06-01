@@ -1,0 +1,74 @@
+// proto-version: 0.3.0
+// AVSA orchestrator gRPC contract.
+//
+// This file is the single source of truth for the orchestrator's external
+// surface. The API gateway proxies `POST /chat` to the
+// Conversation RPCs below. External MCP callers reach AVSA's tools through the
+// conformant JSON-RPC MCP server (AVSA.MCP.Server), which invokes
+// the image-native AVSA.MCP.Tools in-process — not through this gRPC contract.
+syntax = "proto3";
+
+package avsa.orchestrator.v1;
+
+option go_package = "github.com/avsa/orchestrator/gen/go/avsa/orchestrator/v1;orchestratorv1";
+option java_package = "ai.avsa.orchestrator.v1";
+
+// Conversation is the orchestrator's stateful entry point. A conversation is
+// identified by a client-supplied UUID; the GenServer behind this service
+// keeps state until the supervisor restarts it.
+service Conversation {
+  // StartConversation runs a turn to completion and returns the last
+  // ConversationEvent emitted. Used for batch / non-streaming callers.
+  rpc StartConversation(StartConversationRequest) returns (ConversationEvent);
+
+  // StreamConversationEvents runs a turn and emits every ConversationEvent
+  // (tool calls, product results, errors) as the orchestrator generates
+  // them. The gateway translates this stream into the SSE response on
+  // `POST /chat`.
+  rpc StreamConversationEvents(StartConversationRequest) returns (stream ConversationEvent);
+}
+
+message StartConversationRequest {
+  // Client-supplied conversation identifier (UUID v4). The orchestrator
+  // refuses to start two concurrent turns for the same id.
+  string conversation_id = 1;
+  // Raw image bytes for one or more images uploaded by the shopper. Each is
+  // capped at 10 MB by the gateway before this RPC is invoked. When more than
+  // one is present they are combined into a single query (the per-image
+  // embeddings are mean-pooled, L2-normalised). Empty list = a text-only turn.
+  // Wire-compatible widening of the former singular `bytes image_bytes`.
+  repeated bytes image_bytes = 2;
+  // Optional free-text prompt accompanying the image(s).
+  string user_text = 3;
+}
+
+message ConversationEvent {
+  // The orchestrator emits a sequence of events. Each event carries one
+  // payload from the `payload` oneof; consumers switch on the populated
+  // field.
+  //
+  // Fields 1 and 3-6 are RESERVED: the dead `tool_call`
+  // (ToolCallEvent) and the AG-UI events (ag_ui_tool_start, ag_ui_tool_complete,
+  // ag_ui_intent_update, ag_ui_layout_hint) were removed when  (the
+  // in-browser AG-UI reasoning panel) was cut. The field numbers and names are
+  // reserved so a future message can never silently collide on the wire. If a
+  // reasoning panel is revived, allocate new field numbers from the spec.
+  reserved 1, 3, 4, 5, 6;
+  reserved "tool_call", "ag_ui_tool_start", "ag_ui_tool_complete",
+      "ag_ui_intent_update", "ag_ui_layout_hint";
+
+  oneof payload {
+    ProductResultEvent product_result = 2;
+  }
+}
+
+message ProductResultEvent {
+  // Catalog product identifier (UUID).
+  string product_id = 1;
+  // Similarity score in [0, 1].
+  float score = 2;
+  // JSON-encoded product card payload. Matches the OpenAPI
+  // `ProductCard` schema; serialised here as opaque JSON because the
+  // catalog schema is intentionally open.
+  string metadata_json = 3;
+}

@@ -1,0 +1,40 @@
+FROM rust:1.87.0-slim-bookworm AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY crates/batcher/Cargo.toml ./Cargo.toml
+COPY crates/batcher/Cargo.lock ./Cargo.lock
+
+RUN mkdir src && echo 'fn main() {}' > src/main.rs \
+    && cargo build --release \
+    && rm -rf src
+
+COPY crates/batcher/src ./src
+RUN touch src/main.rs && cargo build --release
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --gid 10001 avsa \
+    && useradd --uid 10001 --gid 10001 --no-create-home avsa
+
+COPY --from=builder /build/target/release/avsa-batcher /usr/local/bin/avsa-batcher
+
+WORKDIR /app
+# config/avsa.toml is injected at runtime via the batcher-avsa-toml ConfigMap
+# volume mount — do not bake local config into the image.
+
+USER avsa
+
+EXPOSE 8001
+
+CMD ["/usr/local/bin/avsa-batcher"]

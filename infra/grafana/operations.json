@@ -1,0 +1,576 @@
+{
+  "title": "AVSA Operations",
+  "uid": "avsa-operations",
+  "schemaVersion": 38,
+  "version": 2,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "value": "prometheus", "text": "Prometheus" },
+        "hide": 2
+      }
+    ]
+  },
+  "panels": [
+
+    {
+      "type": "row",
+      "title": "End-to-End Request Journey",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false,
+      "id": 1
+    },
+    {
+      "type": "text",
+      "title": "What this section measures",
+      "gridPos": { "x": 0, "y": 1, "w": 12, "h": 3 },
+      "id": 2,
+      "options": {
+        "mode": "markdown",
+        "content": "Tracks the full round-trip from browser to rendered results. **Conversation latency** (Elixir orchestrator) is the authoritative end-to-end timer shown at p95. The waterfall below shows **mean** latency per stage — means are additive (they sum to the mean total), unlike per-stage p95s which are independent quantiles and do not. Per `docs/qps-optimisation.md §1b`, the pipeline is **LLM-bound (~1–3 s), not ViT-bound (~350 ms at bs=24)**. Maximising ViT QPS lowers cost-per-shopper; it does not reduce felt latency."
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Conversation p50 (ms)",
+      "gridPos": { "x": 12, "y": 1, "w": 4, "h": 3 },
+      "id": 3,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1500 },
+              { "color": "red", "value": 3000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "graphMode": "area"
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "histogram_quantile(0.50, sum(rate(avsa_conversation_latency_seconds_bucket[5m])) by (le)) * 1000",
+        "legendFormat": "p50"
+      }]
+    },
+    {
+      "type": "stat",
+      "title": "Conversation p95 (ms)",
+      "gridPos": { "x": 16, "y": 1, "w": 4, "h": 3 },
+      "id": 4,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2000 },
+              { "color": "red", "value": 4000 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "graphMode": "area"
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "histogram_quantile(0.95, sum(rate(avsa_conversation_latency_seconds_bucket[5m])) by (le)) * 1000",
+        "legendFormat": "p95"
+      }]
+    },
+    {
+      "type": "stat",
+      "title": "Chat success rate",
+      "gridPos": { "x": 20, "y": 1, "w": 4, "h": 3 },
+      "id": 5,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.95 },
+              { "color": "green", "value": 0.99 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "graphMode": "area"
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "sum(rate(avsa_chat_outcome_total{outcome=\"success\"}[5m])) / sum(rate(avsa_chat_outcome_total[5m]))",
+        "legendFormat": "success rate"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request journey: total p95 + mean per stage (means are additive; p95s are not)",
+      "description": "The top line is end-to-end conversation p95. The stage lines are means — their values sum to the mean total, showing where time is actually spent. A stage mean spiking while p95 holds indicates a tail problem in that component only.",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "id": 6,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Conversation total p95" },
+            "properties": [
+              { "id": "custom.lineWidth", "value": 2 },
+              { "id": "custom.lineStyle", "value": { "fill": "dash" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(avsa_conversation_latency_seconds_bucket[5m])) by (le)) * 1000",
+          "legendFormat": "Conversation total p95"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(avsa_embed_latency_seconds_sum[5m]) / rate(avsa_embed_latency_seconds_count[5m]) * 1000",
+          "legendFormat": "ViT embed mean (batcher→Modal)"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(avsa_orch_tool_retrieval_duration_seconds_sum[5m]) / rate(avsa_orch_tool_retrieval_duration_seconds_count[5m]) * 1000",
+          "legendFormat": "pgvector retrieval mean"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(avsa_orch_tool_attribute_duration_seconds_sum[5m]) / rate(avsa_orch_tool_attribute_duration_seconds_count[5m]) * 1000",
+          "legendFormat": "LLM attribute extraction mean"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(avsa_api_orchestrator_call_duration_seconds_sum[5m]) / rate(avsa_api_orchestrator_call_duration_seconds_count[5m]) * 1000",
+          "legendFormat": "API→orchestrator gRPC mean"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Throughput",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 1 },
+      "collapsed": false,
+      "id": 10
+    },
+    {
+      "type": "text",
+      "title": "What this section measures",
+      "gridPos": { "x": 0, "y": 13, "w": 8, "h": 3 },
+      "id": 11,
+      "options": {
+        "mode": "markdown",
+        "content": "**Throughput = requests processed per second per layer.** ViT embed QPS is the GPU capacity metric from the optimisation work — higher QPS means more shoppers served per unit GPU cost. Queue depth is a leading indicator: it rises before latency does when the batcher is under backpressure."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Batcher queue depth",
+      "description": "Rising queue depth without a corresponding rise in flush latency means the batcher is filling batches quickly. A growing depth that never drains means the Modal endpoint is too slow — a leading latency signal.",
+      "gridPos": { "x": 0, "y": 16, "w": 8, "h": 4 },
+      "id": 14,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "avsa_batcher_queue_depth",
+        "legendFormat": "queue depth"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Chat requests/s (shopper → orchestrator)",
+      "gridPos": { "x": 8, "y": 13, "w": 8, "h": 7 },
+      "id": 12,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(avsa_shopper_chat_requests_total[1m]))",
+          "legendFormat": "shopper proxy"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(avsa_chat_outcome_total[1m]))",
+          "legendFormat": "orchestrator conversations"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "ViT embed QPS (batcher)",
+      "gridPos": { "x": 16, "y": 13, "w": 8, "h": 7 },
+      "id": 13,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(avsa_batcher_requests_total{outcome=\"ok\"}[1m]))",
+          "legendFormat": "embed ok/s"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(avsa_vit_qps_total[1m]))",
+          "legendFormat": "orchestrator embed events/s"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Latency Percentiles by Component",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 1 },
+      "collapsed": false,
+      "id": 20
+    },
+    {
+      "type": "text",
+      "title": "What this section measures",
+      "gridPos": { "x": 0, "y": 21, "w": 8, "h": 3 },
+      "id": 21,
+      "options": {
+        "mode": "markdown",
+        "content": "**Component-level latency histograms at p50/p95.** Use these to isolate which layer is regressing independently of the others. Batcher latency includes Modal network RTT (~831 ms at bs=24, ~345 ms GPU compute + serialisation + 226 ms transfer + 62 ms TCP/TLS + 186 ms control-plane). Flush latency is time from first item queued to batch dispatch — a persistently short flush latency with low queue depth means the `max_wait_ms` timeout is firing constantly (under-batched traffic)."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Batcher flush latency p50/p95 (ms)",
+      "description": "Time from first item queued to batch flush. Short flush + low queue = max_wait_ms timeout firing constantly = under-batched. Ideal: flush latency ≈ max_wait_ms with queue depth near max_batch_size.",
+      "gridPos": { "x": 0, "y": 24, "w": 8, "h": 4 },
+      "id": 24,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum(rate(avsa_batcher_flush_latency_seconds_bucket[5m])) by (le)) * 1000",
+          "legendFormat": "flush p50"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(avsa_batcher_flush_latency_seconds_bucket[5m])) by (le)) * 1000",
+          "legendFormat": "flush p95"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Batcher request latency p50/p95 (ms)",
+      "description": "End-to-end latency from /embed handler entry to response sent. Includes all Modal network RTT. Compare against flush latency to separate batching overhead from Modal RTT.",
+      "gridPos": { "x": 8, "y": 21, "w": 8, "h": 7 },
+      "id": 22,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum(rate(avsa_batcher_request_latency_seconds_bucket[5m])) by (le)) * 1000",
+          "legendFormat": "batcher p50"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(avsa_batcher_request_latency_seconds_bucket[5m])) by (le)) * 1000",
+          "legendFormat": "batcher p95"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Shopper chat proxy duration p50/p95 (ms)",
+      "description": "Time in the Next.js proxy from receiving the POST to dispatching the upstream fetch. Normally a few ms (network + formData parse). A spike here means the Node.js server is overloaded, not the backend.",
+      "gridPos": { "x": 16, "y": 21, "w": 8, "h": 7 },
+      "id": 23,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum(rate(avsa_shopper_chat_duration_seconds_bucket[5m])) by (le)) * 1000",
+          "legendFormat": "shopper proxy p50"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(avsa_shopper_chat_duration_seconds_bucket[5m])) by (le)) * 1000",
+          "legendFormat": "shopper proxy p95"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Errors by Component",
+      "gridPos": { "x": 0, "y": 28, "w": 24, "h": 1 },
+      "collapsed": false,
+      "id": 30
+    },
+    {
+      "type": "text",
+      "title": "What this section measures",
+      "gridPos": { "x": 0, "y": 29, "w": 6, "h": 3 },
+      "id": 31,
+      "options": {
+        "mode": "markdown",
+        "content": "**Error event rates per second by component.** Batcher errors (timeout/bad_gateway) track Modal GPU unavailability. Rate limit spikes indicate a single IP hammering the API. Empty retrieval means the vector query returned nothing — the shopper sees a dead end. Constraint relaxation means the colour filter had to be dropped to find any matches. All values are events/s from `rate()` over 1-minute windows."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Batcher errors/s by outcome",
+      "gridPos": { "x": 6, "y": 29, "w": 6, "h": 7 },
+      "id": 32,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "sum(rate(avsa_batcher_requests_total{outcome!=\"ok\"}[1m])) by (outcome)",
+        "legendFormat": "{{outcome}}"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "API rate limit rejections/s",
+      "gridPos": { "x": 12, "y": 29, "w": 6, "h": 7 },
+      "id": 33,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "rate(avsa_api_rate_limit_total[1m])",
+        "legendFormat": "rate limited"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Retrieval quality: empty results/s + colour constraint relaxed/s",
+      "gridPos": { "x": 18, "y": 29, "w": 6, "h": 7 },
+      "id": 34,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(avsa_retrieval_empty_total[1m])",
+          "legendFormat": "empty results"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(avsa_retrieval_constraint_relaxed_total[1m])",
+          "legendFormat": "colour constraint relaxed"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Circuit Breakers",
+      "gridPos": { "x": 0, "y": 36, "w": 24, "h": 1 },
+      "collapsed": false,
+      "id": 40
+    },
+    {
+      "type": "text",
+      "title": "What this section measures",
+      "gridPos": { "x": 0, "y": 37, "w": 6, "h": 4 },
+      "id": 41,
+      "options": {
+        "mode": "markdown",
+        "content": "**Circuit breaker state, melt rate, and recovery.** A breaker opens (BLOWN) after N failures within a window and short-circuits requests with `{:error, :circuit_open}`. It self-resets after 60 s. The stat panels show current state. The **melt rate** chart shows calls that triggered a melt — a rising rate means the upstream is continuously failing. The **state timeline** shows exactly when each circuit was BLOWN (red) vs CLOSED (green) over the selected window, including when it recovered."
+      }
+    },
+    {
+      "type": "stat",
+      "title": "batcher_circuit",
+      "gridPos": { "x": 6, "y": 37, "w": 3, "h": 4 },
+      "id": 42,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": {
+              "0": { "text": "CLOSED", "color": "green" },
+              "1": { "text": "BLOWN",  "color": "red"   }
+            }}
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "avsa_circuit_state{breaker=\"batcher_circuit\"}",
+        "legendFormat": "batcher"
+      }]
+    },
+    {
+      "type": "stat",
+      "title": "anthropic_circuit",
+      "gridPos": { "x": 9, "y": 37, "w": 3, "h": 4 },
+      "id": 43,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": {
+              "0": { "text": "CLOSED", "color": "green" },
+              "1": { "text": "BLOWN",  "color": "red"   }
+            }}
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "avsa_circuit_state{breaker=\"anthropic_circuit\"}",
+        "legendFormat": "anthropic"
+      }]
+    },
+    {
+      "type": "stat",
+      "title": "text_encoder_circuit",
+      "gridPos": { "x": 12, "y": 37, "w": 3, "h": 4 },
+      "id": 44,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": {
+              "0": { "text": "CLOSED", "color": "green" },
+              "1": { "text": "BLOWN",  "color": "red"   }
+            }}
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "avsa_circuit_state{breaker=\"text_encoder_circuit\"}",
+        "legendFormat": "text_encoder"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Circuit melt rate/s (one melt = one failed call inching the breaker toward open)",
+      "description": "A sustained melt rate without a corresponding BLOWN state means the circuit is absorbing failures without opening yet (under threshold). A spike that coincides with state going BLOWN in the timeline below is the canonical failure signature.",
+      "gridPos": { "x": 15, "y": 37, "w": 9, "h": 4 },
+      "id": 45,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "sum(rate(avsa_circuit_melt_total[1m])) by (breaker)",
+        "legendFormat": "{{breaker}}"
+      }]
+    },
+    {
+      "type": "state-timeline",
+      "title": "Circuit state history — green = CLOSED (healthy), red = BLOWN (short-circuiting requests)",
+      "description": "Recovery appears as a red→green transition. If a circuit is red for more than 60 s, the upstream has not recovered in the auto-reset window and needs direct investigation.",
+      "gridPos": { "x": 0, "y": 41, "w": 24, "h": 5 },
+      "id": 46,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 70, "lineWidth": 0 },
+          "mappings": [
+            { "type": "value", "options": {
+              "0": { "text": "CLOSED", "color": "green" },
+              "1": { "text": "BLOWN",  "color": "red"   }
+            }}
+          ]
+        }
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "alignValue": "center",
+        "rowHeight": 0.9,
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "avsa_circuit_state",
+        "legendFormat": "{{breaker}}"
+      }]
+    },
+
+    {
+      "type": "row",
+      "title": "Cache Efficiency & Retrieval Quality",
+      "gridPos": { "x": 0, "y": 46, "w": 24, "h": 1 },
+      "collapsed": false,
+      "id": 50
+    },
+    {
+      "type": "text",
+      "title": "What this section measures",
+      "gridPos": { "x": 0, "y": 47, "w": 6, "h": 3 },
+      "id": 51,
+      "options": {
+        "mode": "markdown",
+        "content": "**Embed cache** (L1 per-turn content-addressed): a hit means the same image/text was embedded earlier in the same turn — the ViT forward pass was skipped. A hit rate near zero for single-image single-turn queries is expected and correct. **Average retrieval results** shows how many products the vector query is returning. A declining average approaching zero is a quality alarm — shoppers are seeing sparse or empty result sets."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Embed cache hit rate by modality",
+      "gridPos": { "x": 6, "y": 47, "w": 9, "h": 7 },
+      "id": 52,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" } },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "sum(rate(avsa_embed_cache_hit_total[5m])) by (modality) / (sum(rate(avsa_embed_cache_hit_total[5m])) by (modality) + sum(rate(avsa_embed_cache_miss_total[5m])) by (modality))",
+        "legendFormat": "hit rate — {{modality}}"
+      }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Mean retrieval results per query",
+      "description": "Uses the histogram _sum/_count to get a smooth mean. A coarser histogram_quantile on these integer-bucketed counts produces a staircase output. The mean is more interpretable: 'each query returns ~8 results on average.' Pair with the empty results rate in the Errors section for the full picture.",
+      "gridPos": { "x": 15, "y": 47, "w": 9, "h": 7 },
+      "id": 53,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "expr": "rate(avsa_retrieval_results_sum[5m]) / rate(avsa_retrieval_results_count[5m])",
+        "legendFormat": "mean results per query"
+      }]
+    }
+
+  ]
+}

@@ -3,12 +3,123 @@ name = "machine-learning-engineering-interview"
 version = "0.1.0"
 description = "Machine Learning Engineering-style Interview Problem."
 readme = "README.md"
-requires-python = "~=3.11"
+requires-python = ">=3.12,<3.13"
 dependencies = [
+    # AVSA shared packages — editable workspace-local path deps (see
+    # [tool.uv.sources]). The root venv runs scripts/, evals/, and the
+    # integration tests, all of which import the data-prep library + its
+    # storage foundation as real packages (no more sys.path insertion).
+    "avsa-core",
+    "avsa-data",
     "fastapi[standard]>=0.115.11",
+    "idna>=3.15",
     "locust>=2.33.0",
     "pillow>=11.1.0",
-    "ray[serve]===2.41.0",
+    "prometheus-fastapi-instrumentator>=7.0",
+    "ray[serve]>=2.54.0,<3.0",
     "torch>=2.6.0",
     "torchvision>=0.21.0",
 ]
+
+[tool.uv.sources]
+avsa-core = { path = "libs/avsa-core", editable = true }
+avsa-data = { path = "libs/avsa-data", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3,<10.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.9,<0.10",
+    "mypy>=1.10,<2.0",
+    "pip-audit>=2.10.0",
+    "types-requests>=2.32",
+    # Validates the OpenAPI spec in tests/test_specs.py and the CI
+    # spec-validate-openapi job. Replaced schemathesis<4
+    # which blocked pytest>=9 (CVE-2025-71176 fix). openapi-spec-validator
+    # supports OpenAPI 3.1 natively and has no pytest version constraint.
+    "openapi-spec-validator>=0.7",
+    # types-pyyaml gives mypy types for the `yaml` module used by
+    # tests/test_specs.py. PyYAML itself is already a transitive
+    # dependency of the project; no runtime addition.
+    "types-pyyaml>=6.0",
+    # Catalog seeder + 100-row pytest fixture. psycopg is
+    # the Postgres driver used for COPY-based bulk insert; numpy backs
+    # the deterministic embedding RNG. Both are dev-only — they ship
+    # neither in the FastAPI image nor in the load-test image.
+    "psycopg[binary]>=3.1,<4",
+    "numpy>=1.26,<3",
+    # Modal CLI — used for `just modal-deploy-*` recipes ( GPU benchmark).
+    "modal>=1.0,<2.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["tests/fixtures/pre-commit"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "ARG", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Scripts and deploy helpers are dense by nature (long print/format lines,
+# argparse help strings). E501 is suppressed; all other rules still apply.
+"scripts/*.py" = ["E501"]
+"modal_deploy/*.py" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+files = ["tests", "machine_learning_engineering_interview", "locustfile.py", "evals", "scripts"]
+# The seeding scripts and catalog_seed.py import the avsa_data / avsa_core
+# packages (installed as editable path deps; see [tool.uv.sources]). Point mypy
+# at their src dirs so it resolves the imports and type-checks the call sites
+# even when the editable-install layout isn't auto-discovered. Without this the
+# imports can collapse to `Any`, masking real return-type errors.
+mypy_path = "libs/avsa-core/src:libs/avsa-data/src"
+# Skip the per-tool fixture *subdirectories* (CI-config samples for
+# bootstrap-gcp, branch-protection, pre-commit, …) — they are sample
+# YAML/JSON/scripts, not typed Python. Python fixture modules placed
+# directly under tests/fixtures/ (e.g. catalog.py) are still type-checked.
+exclude = ["tests/fixtures/[^/]+/"]
+
+# torchvision ships without py.typed and there are no community stubs
+# good enough to enable strict mode against. Narrow override — anything
+# we use from torchvision is treated as `Any` at the call site.
+[[tool.mypy.overrides]]
+module = ["torchvision", "torchvision.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+# `strict` mode (vs `auto` from #1) — only tests decorated with
+# `@pytest.mark.asyncio` are treated as coroutines. Auto mode interacts
+# badly with FastAPI's sync TestClient and pytest-locust plugins; sync
+# tests can hang at collection. `auto` may flip back when an async test
+# surface (e.g., `tests/integration/`) genuinely needs it.
+asyncio_mode = "strict"
+# Default run skips collection of test_loadtest.py entirely. Importing
+# locust (which the test module does at the top) calls
+# `gevent.monkey.patch_all()`, which clobbers `ssl`/`socket` and silently
+# hangs FastAPI's TestClient if both collect in the same pytest process.
+# A marker-based skip is not enough — pytest imports the module during
+# collection, before the marker filter runs. `just test` (and CI) run
+# the loadtest file in its own pytest invocation.
+addopts = "--strict-markers -ra --ignore=tests/test_loadtest.py --ignore=tests/test_workload.py"
+markers = [
+    "loadtest: tests that import locust — must run in their own pytest process (see addopts).",
+    "integration: tests that require a live Postgres + pgvector instance; skip when unavailable.",
+    "e2e: full-stack tests; run with AVSA_E2E=1 against a running stack (just stack-up).",
+]
+# Put the project root on sys.path so tests can `from
+# machine_learning_engineering_interview import ...` without the package
+# being formally installed. Cleaner than configuring a build-backend just
+# for tests.
+pythonpath = ["."]

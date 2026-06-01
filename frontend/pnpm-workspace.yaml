@@ -1,0 +1,4 @@
+packages:
+  - "apps/shopper"
+  - "apps/reviewer"
+  - "packages/shared"

@@ -1,3 +1,4 @@
+{{- if .Values.loadtest.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,9 +16,9 @@ spec:
     spec:
       containers:
         - name: loadtest-service
-          image: {{ .Values.image_loadtest.repository }}:{{ .Values.image_loadtest.tag | default "latest" }}
+          image: "{{ .Values.image_loadtest.repository }}:{{ .Values.image_loadtest.tag | default "latest" }}{{- if .Values.image_loadtest.digest }}@{{ .Values.image_loadtest.digest }}{{- end }}"
           ports:
-            - containerPort: 80
+            - containerPort: 8089
           command: ["locust", "-f", "loadtest.py", "--host", "http://model-service.{{ .Release.Namespace }}.svc.cluster.local:80", "--web-port", "8089"]
           env:
             - name: API_URL
@@ -43,3 +44,4 @@ spec:
       port: 80
       targetPort: 8089
   type: ClusterIP
+{{- end }}

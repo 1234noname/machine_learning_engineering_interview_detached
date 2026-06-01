@@ -1,0 +1,112 @@
+{
+  "_comment": "MCP 2025-03 tool manifest. `annotations` is an extension allowed by the spec's `additionalProperties`; see specs/README.md for the design rationale.",
+  "protocolVersion": "2025-03",
+  "version": "1.0.0",
+  "tools": [
+    {
+      "name": "find_similar",
+      "description": "Retrieve the top-k similar products from the catalog. IMAGE-NATIVE: provide an image (`image_b64` inline base64, or `image_ref` storage key) for visual kNN, OR a `text` query for text kNN. The tool embeds the input internally (ViT for images, CLIP-text for text) and runs pgvector kNN; it does NOT accept a pre-computed embedding. Optional `attrs` narrow the search.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "image_b64": {
+            "type": "string",
+            "description": "Inline base64-encoded image bytes (image modality). Embedded to a 768-d ViT vector internally."
+          },
+          "image_ref": {
+            "type": "string",
+            "description": "Storage key resolved by the server to image bytes (image modality). Alternative to image_b64."
+          },
+          "text": {
+            "type": "string",
+            "description": "Free-text query (text modality), used when no image is supplied. Embedded to a 512-d CLIP-text vector internally."
+          },
+          "attrs": {
+            "type": "object",
+            "description": "Attribute filters narrowing the kNN search before similarity ranking. An explicit `colour` constrains the candidate set.",
+            "properties": {
+              "category": {"type": "string"},
+              "colour": {"type": "string"},
+              "formality": {"type": "string"},
+              "occasion": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "description": "Ranked list of product matches.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "result_id": {"type": "string"},
+                "score": {"type": "number"},
+                "rank": {"type": "integer", "minimum": 1}
+              },
+              "required": ["result_id", "score", "rank"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["results"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "makesSdkCall": false,
+        "title": "Find similar products",
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "extract_attributes",
+      "description": "Extract a structured attribute object suitable for `find_similar`. IMAGE-NATIVE: provide an image (`image_b64` inline base64, or `image_ref` storage key) plus the user's text. On image turns `category`/`colour` are sourced from the ViT attribute head (the tool embeds the image internally) and the LLM is asked only for the text-derived `formality`/`occasion`; with no image the LLM supplies all four. Invokes the LLM.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "image_b64": {
+            "type": "string",
+            "description": "Inline base64-encoded image bytes. The ViT attribute head sources category/colour from it."
+          },
+          "image_ref": {
+            "type": "string",
+            "description": "Storage key resolved by the server to image bytes. Alternative to image_b64."
+          },
+          "user_text": {
+            "type": "string",
+            "description": "The user's accompanying chat message (may be empty)."
+          }
+        },
+        "required": ["user_text"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "attrs": {
+            "type": "object",
+            "properties": {
+              "category": {"type": "string"},
+              "colour": {"type": "string"},
+              "formality": {"type": "string"},
+              "occasion": {"type": "string"}
+            },
+            "required": ["category", "colour", "formality", "occasion"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["attrs"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "makesSdkCall": true,
+        "title": "Extract product attributes",
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

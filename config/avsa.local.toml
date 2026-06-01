@@ -1,0 +1,21 @@
+# Local dev overlay — merged on top of avsa.base.toml by `just config-gen local`.
+# Only keys that differ from the CI-safe base belong here.
+
+[model]
+# Apple GPU — ~1.8x the CPU QPS; see docs/qps-local-optimization.md.
+device = "mps"
+# fp16 inference: +9.3% QPS on MPS, cosine-equivalent embeddings.
+use_fp16 = true
+# torch.compile is disabled by default for local dev (faster startup).
+# To benchmark compile modes, temporarily set use_compile = true and
+# compile_mode = "reduce-overhead". Note: max-autotune requires Triton (CUDA-only)
+# and will crash on MPS — only reduce-overhead is testable locally.
+use_compile = false
+compile_mode = "reduce-overhead"
+
+[bench]
+# Wider concurrency sweep for local saturation profiling.
+# CI base [1,4,8,16] is kept small so the per-point 30s duration doesn't inflate
+# the perf-gate job time. Locally push to 64 to find the true QPS ceiling.
+batch_sizes = [1]
+concurrency_levels = [1, 4, 8, 16, 32, 64]

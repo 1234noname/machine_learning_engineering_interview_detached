@@ -1,0 +1,17 @@
+# Gitleaks config for AVSA.
+#
+# Extends the default ruleset and allowlists known-fixture files that
+# intentionally contain fake secret patterns for verifier testing.
+# See `tests/fixtures/pre-commit/secret-pattern.txt` for context.
+
+title = "AVSA gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fixture files contain intentionally-fake secret patterns to verify the gitleaks hook detects them."
+paths = [
+    '''tests/fixtures/pre-commit/secret-pattern\.txt''',
+    '''apps/orchestrator/deps/''',
+]

@@ -1,0 +1,742 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  # Run on the temporary merged branch the merge queue creates so required
+  # checks are satisfied before a PR enters the queue.
+  merge_group:
+
+# Cancel in-flight runs for the same ref when a new push lands. Only the
+# latest commit needs to pass.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # gitleaks (security job) calls the GitHub API to list PR commits for
+  # scanning; needs read access to the pull-requests resource.
+  pull-requests: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Python — root workspace (libs/avsa-core, libs/avsa-data, tests/)
+  # ---------------------------------------------------------------------------
+  python:
+    name: python
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+      - name: ruff format --check
+        run: uv run ruff format --check
+      - name: ruff check
+        run: uv run ruff check
+      - name: mypy
+        run: uv run mypy
+      - name: Generate config
+        run: uv run python scripts/config-gen.py ci
+      - name: pytest
+        # Default addopts (pyproject.toml) excludes test_loadtest.py and
+        # test_workload.py. -m "not slow and not integration and not e2e"
+        # keeps this job fast and dependency-free.
+        run: uv run pytest -m "not slow and not integration and not e2e"
+
+  # ---------------------------------------------------------------------------
+  # Python — apps/api (FastAPI service, own uv.lock)
+  # ---------------------------------------------------------------------------
+  api:
+    name: api
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - name: uv sync
+        working-directory: apps/api
+        run: uv sync --frozen --extra dev
+      - name: Generate config
+        run: uv run python scripts/config-gen.py ci
+      - name: ruff format --check
+        working-directory: apps/api
+        run: uv run ruff format --check src/ tests/
+      - name: ruff check
+        working-directory: apps/api
+        run: uv run ruff check src/ tests/
+      - name: mypy
+        working-directory: apps/api
+        run: uv run mypy src/
+      - name: pytest
+        working-directory: apps/api
+        env:
+          # Replaces the live gRPC orchestrator channel with a stub response so
+          # tests run without a running orchestrator.
+          AVSA_ORCHESTRATOR_STUB: "1"
+          # MCP route tests check key presence/absence via monkeypatch; this
+          # static value satisfies the startup check in CI.
+          AVSA_MCP_API_KEY: "ci-test-key"
+        run: uv run pytest -m "not integration and not e2e"
+
+  # ---------------------------------------------------------------------------
+  # Python — apps/model (ViT embedding service, own uv.lock)
+  # ---------------------------------------------------------------------------
+  model:
+    name: model
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - name: uv sync
+        working-directory: apps/model
+        run: uv sync --frozen --extra dev
+      - name: Generate config
+        run: uv run python scripts/config-gen.py ci
+      - name: ruff format --check
+        working-directory: apps/model
+        run: uv run ruff format --check src/ tests/
+      - name: ruff check
+        working-directory: apps/model
+        run: uv run ruff check src/ tests/
+      - name: mypy
+        working-directory: apps/model
+        run: uv run mypy src/
+      - name: pytest
+        working-directory: apps/model
+        env:
+          # Stub mode: deterministic SHA-256 embeddings; no weights downloaded,
+          # no GPU required. All unit tests run against this path.
+          AVSA_MODEL_STUB: "1"
+        run: uv run pytest
+
+  # ---------------------------------------------------------------------------
+  # Elixir — apps/orchestrator (umbrella)
+  # ---------------------------------------------------------------------------
+  elixir:
+    name: elixir
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MIX_ENV: test
+    defaults:
+      run:
+        working-directory: apps/orchestrator
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Elixir and OTP
+        uses: erlef/setup-beam@fc68ffb90438ef2936bbb3251622353b3dcb2f93 # v1.24.0
+        with:
+          otp-version: '26.2'
+          elixir-version: '1.16.3'
+      - name: Check formatting
+        run: mix format --check-formatted
+      - name: Install dependencies
+        run: mix deps.get --check-locked
+      - name: Compile (warnings as errors)
+        # In an umbrella, a separate mix deps.compile step would generate stub
+        # .app files without .beam files, causing mix compile to skip sub-app
+        # sources. One pass handles both deps and sub-apps correctly.
+        run: mix compile --warnings-as-errors
+      - name: Run tests
+        # test.exs sets start_repo/start_grpc/start_metrics/start_mcp: false and
+        # test_helper.exs excludes :integration tests — no DB or live services
+        # required for this job.
+        run: mix test
+
+  # ---------------------------------------------------------------------------
+  # Rust — crates/batcher
+  # ---------------------------------------------------------------------------
+  batcher:
+    name: batcher
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: "1.87.0"
+          components: clippy,rustfmt
+      - name: cargo fmt --check
+        run: cargo fmt --check --manifest-path crates/batcher/Cargo.toml
+      - name: cargo clippy
+        run: cargo clippy --manifest-path crates/batcher/Cargo.toml --all-targets -- -D warnings
+      - name: cargo test
+        run: cargo test --manifest-path crates/batcher/Cargo.toml
+
+  # ---------------------------------------------------------------------------
+  # Frontend — apps/shopper + packages/shared (pnpm workspace)
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # pnpm must be set up before setup-node so the built-in pnpm cache key
+      # (cache-dependency-path) resolves against the correct lockfile.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        with:
+          version: 9
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: pnpm install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Generate OpenAPI types
+        # packages/shared generates TypeScript types from the OpenAPI spec;
+        # lint and tests both depend on these generated files.
+        working-directory: frontend
+        run: pnpm --filter @avsa/shared run generate
+      - name: Lint
+        working-directory: frontend
+        run: pnpm --filter @avsa/shopper run lint
+      - name: Test
+        working-directory: frontend
+        run: pnpm --filter @avsa/shopper run test
+
+  # ---------------------------------------------------------------------------
+  # Python — integration tests (tests/integration/, requires live Postgres)
+  # ---------------------------------------------------------------------------
+  python-integration:
+    name: python-integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
+        env:
+          POSTGRES_USER: avsa
+          POSTGRES_PASSWORD: avsa
+          POSTGRES_DB: avsa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U avsa -d avsa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://avsa:avsa@localhost:5432/avsa
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+      - name: Apply migrations
+        # Creates the catalog / conversations schemas and the pgvector extension.
+        # The ledger (public.schema_migrations) makes re-runs idempotent. Run
+        # once here so every test module can assume the schema is in place.
+        run: bash infra/migrations/migrate.sh
+      - name: pytest (integration)
+        # Tests skip automatically when DATABASE_URL is unset; here it is set so
+        # they run. The seeded_catalog_db fixture seeds 100 rows per test inside a
+        # transaction and rolls back at teardown — no persistent state between tests.
+        run: uv run pytest tests/integration -v
+
+  # ---------------------------------------------------------------------------
+  # Elixir — integration tests (@tag :integration, requires live Postgres)
+  # ---------------------------------------------------------------------------
+  elixir-integration:
+    name: elixir-integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
+        env:
+          POSTGRES_USER: avsa
+          POSTGRES_PASSWORD: avsa
+          POSTGRES_DB: avsa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U avsa -d avsa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MIX_ENV: test
+      # runtime.exs: DATABASE_URL set → start_repo: true + Ecto SQL.Sandbox pool.
+      # test_helper.exs: starts the Repo once and puts Sandbox in :manual mode.
+      # Each @tag :integration test checks out a Sandbox connection in SHARED mode
+      # so the app's named DB GenServers see the test's seeded rows, then rolls
+      # back at teardown — no persistent state between tests.
+      DATABASE_URL: postgresql://avsa:avsa@localhost:5432/avsa
+    defaults:
+      run:
+        working-directory: apps/orchestrator
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Elixir and OTP
+        uses: erlef/setup-beam@fc68ffb90438ef2936bbb3251622353b3dcb2f93 # v1.24.0
+        with:
+          otp-version: '26.2'
+          elixir-version: '1.16.3'
+      - name: Install dependencies
+        run: mix deps.get --check-locked
+      - name: Compile
+        run: mix compile --warnings-as-errors
+      - name: Apply migrations
+        working-directory: .
+        run: bash infra/migrations/migrate.sh
+      - name: Run integration tests
+        run: mix test --only integration
+
+  # ---------------------------------------------------------------------------
+  # E2E — full stack (postgres, toxiproxy, model, batcher, orchestrator,
+  #        api, shopper) + Python E2E tests + Playwright browser tests
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
+        env:
+          POSTGRES_USER: avsa
+          POSTGRES_PASSWORD: avsa
+          POSTGRES_DB: avsa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U avsa -d avsa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://avsa:avsa@localhost:5432/avsa
+      # AVSA_LLM_STUB=1 replaces the Anthropic LLM with the in-process mock so
+      # the E2E suite runs without an API key and at zero cost.
+      AVSA_LLM_STUB: "1"
+      # Shared API key used by the orchestrator's MCP listener, the API
+      # service's MCP routes, and the E2E test clients. All three must agree.
+      AVSA_MCP_API_KEY: "e2e-test-key-not-a-secret"
+      # Any non-empty value satisfies the LocalStorageBackend HMAC check in e2e.
+      AVSA_STORAGE_HMAC_SECRET: "e2e-test-hmac-secret-not-a-secret"
+      # The API reads AVSA_DB_URL (not DATABASE_URL) for its asyncpg pool; the
+      # fallback in avsa.base.toml uses port 5434 (local dev docker) which is not
+      # running in CI.  Set it explicitly so GET /catalog returns 200 instead of 503.
+      AVSA_DB_URL: postgresql://avsa:avsa@localhost:5432/avsa
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          lfs: true
+
+      # ── Runtime setup ──────────────────────────────────────────────────────
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - name: Set up Elixir and OTP
+        uses: erlef/setup-beam@fc68ffb90438ef2936bbb3251622353b3dcb2f93 # v1.24.0
+        with:
+          otp-version: '26.2'
+          elixir-version: '1.16.3'
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: "1.87.0"
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        with:
+          version: 9
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # ── Install dependencies ───────────────────────────────────────────────
+      - name: uv sync (root workspace)
+        run: uv sync --frozen
+      - name: uv sync (model service)
+        working-directory: apps/model
+        run: uv sync --frozen --extra dev
+      - name: uv sync (API service)
+        working-directory: apps/api
+        run: uv sync --frozen
+      - name: mix deps.get
+        working-directory: apps/orchestrator
+        run: MIX_ENV=dev mix deps.get --check-locked
+      - name: pnpm install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Build batcher (Rust release)
+        run: cargo build --release --manifest-path crates/batcher/Cargo.toml
+      - name: Compile orchestrator
+        working-directory: apps/orchestrator
+        run: MIX_ENV=dev mix compile
+      - name: Build shopper (Next.js standalone)
+        # AVSA_API_URL is read by the images.remotePatterns config at build
+        # time; set it here so the built server allows proxying from :8080.
+        # NEXT_PUBLIC_* vars are baked in at compile time; the shopper navbar
+        # conditionally renders "Metrics" and "API Docs" links only when these
+        # are non-empty, so they must be set here (not at runtime).
+        working-directory: frontend
+        env:
+          AVSA_API_URL: http://localhost:8080
+          NEXT_PUBLIC_GRAFANA_URL: http://localhost:3010/d/avsa-operations
+          NEXT_PUBLIC_API_DOCS_URL: http://localhost:3000/api/docs
+        run: |
+          pnpm --filter @avsa/shared run generate
+          pnpm --filter @avsa/shopper run build
+          # Next.js standalone does not copy static assets; copy them so the
+          # standalone server can serve them correctly at runtime.
+          cp -r apps/shopper/.next/static \
+            apps/shopper/.next/standalone/apps/shopper/.next/static
+          cp -r apps/shopper/public \
+            apps/shopper/.next/standalone/apps/shopper/public
+
+      # ── Database ───────────────────────────────────────────────────────────
+      - name: Generate config
+        run: uv run python scripts/config-gen.py ci
+      - name: Apply migrations
+        run: bash infra/migrations/migrate.sh
+      - name: Seed catalog
+        # source=fashion200k (from config/avsa.toml): loads pre-computed image +
+        # text embeddings from the committed artifact so the text-kNN E2E tests
+        # have results. The artifact is committed at data/embeddings/<hash>/.
+        # AVSA_EMBED_STUB is not needed for fashion200k; embeddings are
+        # pre-computed — no live ViT calls are made.
+        run: uv run python scripts/seed-catalog.py
+
+      # ── Toxiproxy (circuit-breaker tests in metrics-instrumentation.spec.ts)
+      - name: Start Toxiproxy
+        # --add-host resolves host.docker.internal to the Docker gateway IP so
+        # the container can reach the batcher on the host at :8081. The static
+        # proxy config (upstream: host.docker.internal:8081) set below is the
+        # same as infra/local-observability/toxiproxy.json.
+        run: |
+          docker run -d \
+            --add-host=host.docker.internal:host-gateway \
+            -p 8474:8474 \
+            -p 18081:18081 \
+            --name toxiproxy \
+            ghcr.io/shopify/toxiproxy:2.9.0 \
+            -host 0.0.0.0
+      - name: Configure Toxiproxy batcher proxy
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8474/version >/dev/null && echo "toxiproxy ready (${i}s)" && break
+            sleep 1
+          done
+          curl -sf -X POST http://localhost:8474/populate \
+            -H "Content-Type: application/json" \
+            -d '[{"name":"batcher","listen":"0.0.0.0:18081","upstream":"host.docker.internal:8081","enabled":true}]'
+
+      # ── Start services ─────────────────────────────────────────────────────
+      - name: Start model service
+        # AVSA_MODEL_STUB=1: deterministic stub embeddings + stub attributes.
+        # No model weights are downloaded; startup takes < 5 s.
+        run: |
+          mkdir -p /tmp/avsa-logs
+          AVSA_MODEL_STUB=1 \
+            uv --directory apps/model run uvicorn avsa_model.main:app \
+              --host 0.0.0.0 --port 8090 \
+            >/tmp/avsa-logs/model.log 2>&1 &
+      - name: Start batcher
+        # Run from repo root so the relative config/avsa.toml path resolves.
+        run: |
+          BATCHER_PORT=8081 RUST_LOG=warn \
+            ./crates/batcher/target/release/avsa-batcher \
+            >/tmp/avsa-logs/batcher.log 2>&1 &
+      - name: Start orchestrator
+        working-directory: apps/orchestrator
+        run: |
+          AVSA_BATCHER_URL=http://localhost:18081 \
+            AVSA_MODEL_URL=http://localhost:8090 \
+            mix phx.server \
+            >/tmp/avsa-logs/orchestrator.log 2>&1 &
+      - name: Start API
+        run: |
+          uv --directory apps/api run uvicorn avsa_api.main:app \
+            --host 0.0.0.0 --port 8080 \
+            >/tmp/avsa-logs/api.log 2>&1 &
+      - name: Start shopper
+        run: |
+          PORT=3000 AVSA_API_URL=http://localhost:8080 \
+            node frontend/apps/shopper/.next/standalone/apps/shopper/server.js \
+            >/tmp/avsa-logs/shopper.log 2>&1 &
+
+      # ── Health gates ───────────────────────────────────────────────────────
+      - name: Wait for model (:8090)
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:8090/embed \
+              -H "Content-Type: application/json" -d '{"images":[]}' 2>/dev/null || true)
+            [[ "$code" != "000" ]] && echo "model ready (${i}s)" && exit 0
+            sleep 1
+          done
+          echo "ERROR: model not ready on :8090 after 60s" >&2; exit 1
+      - name: Wait for batcher (:8081)
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            nc -z 127.0.0.1 8081 2>/dev/null && echo "batcher ready (${i}s)" && exit 0
+            sleep 1
+          done
+          echo "ERROR: batcher not ready on :8081 after 30s" >&2; exit 1
+      - name: Wait for orchestrator (:9568)
+        # Health check on the Prometheus metrics endpoint — it's up when the
+        # full application has started (DB pool, gRPC server, MCP listener).
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            curl -sf http://127.0.0.1:9568/metrics >/dev/null 2>&1 && echo "orchestrator ready (${i}s)" && exit 0
+            sleep 1
+          done
+          echo "ERROR: orchestrator not ready on :9568 after 90s" >&2; exit 1
+      - name: Wait for API (:8080)
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8080/health >/dev/null 2>&1 && echo "api ready (${i}s)" && exit 0
+            sleep 1
+          done
+          echo "ERROR: API not ready on :8080 after 60s" >&2; exit 1
+      - name: Wait for shopper (:3000)
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3000 >/dev/null 2>&1 && echo "shopper ready (${i}s)" && exit 0
+            sleep 1
+          done
+          echo "ERROR: shopper not ready on :3000 after 60s" >&2; exit 1
+
+      # ── Tests ──────────────────────────────────────────────────────────────
+      - name: Python E2E tests
+        env:
+          AVSA_E2E: "1"
+          AVSA_E2E_MCP_KEY: "e2e-test-key-not-a-secret"
+        run: uv run pytest tests/e2e/ -m e2e -v
+
+      - name: Install Playwright browsers
+        working-directory: frontend/apps/shopper
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright E2E tests
+        working-directory: frontend/apps/shopper
+        run: npx playwright test
+
+      # ── Artifacts (always collected, uploaded on failure) ─────────────────
+      - name: Collect service logs
+        if: failure()
+        run: |
+          for svc in model batcher orchestrator api shopper; do
+            echo "=== ${svc} ===" >> /tmp/all-service-logs.txt
+            cat /tmp/avsa-logs/${svc}.log >> /tmp/all-service-logs.txt 2>/dev/null || true
+          done
+      - name: Upload service logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-service-logs-${{ github.run_id }}
+          path: /tmp/all-service-logs.txt
+          retention-days: 7
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: frontend/apps/shopper/playwright-report/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # uv lockfile integrity — catches pyproject.toml changes not reflected in
+  # uv.lock (e.g. a dep bump that wasn't followed by `uv lock`).
+  # ---------------------------------------------------------------------------
+  lockfile-integrity:
+    name: lockfile-integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - name: uv lock --check
+        run: uv lock --check
+
+  # ---------------------------------------------------------------------------
+  # Doc drift — README setup section references only `just` recipes that exist
+  # in the justfile. Catches stale quick-start instructions.
+  # ---------------------------------------------------------------------------
+  doc-drift:
+    name: doc-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Run doc-drift check
+        run: bash scripts/check-doc-drift.sh
+
+  # ---------------------------------------------------------------------------
+  # OpenAPI spec — validates specs/api/chat.openapi.yaml is well-formed
+  # OpenAPI 3.1. Catches syntax errors and broken $ref chains.
+  # ---------------------------------------------------------------------------
+  spec-validate-openapi:
+    name: spec-validate-openapi
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+      - name: openapi-spec-validator
+        run: uv run openapi-spec-validator specs/api/chat.openapi.yaml
+
+  # ---------------------------------------------------------------------------
+  # Proto lint — buf lint validates specs/orchestrator/avsa.proto follows the
+  # configured style rules (buf.yaml). Catches naming violations before codegen.
+  # ---------------------------------------------------------------------------
+  spec-validate-proto:
+    name: spec-validate-proto
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up buf
+        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: buf lint
+        working-directory: specs/orchestrator
+        run: buf lint
+
+  # ---------------------------------------------------------------------------
+  # Proto codegen — regenerates apps/orchestrator/apps/avsa/lib/avsa/proto/
+  # avsa.pb.ex from specs/orchestrator/avsa.proto and fails if the committed
+  # file differs. Catches proto changes that weren't followed by `just proto-gen`.
+  # ---------------------------------------------------------------------------
+  proto-gen-elixir:
+    name: proto-gen-elixir
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Elixir and OTP
+        uses: erlef/setup-beam@fc68ffb90438ef2936bbb3251622353b3dcb2f93 # v1.24.0
+        with:
+          otp-version: '26.2'
+          elixir-version: '1.16.3'
+      - name: Install protoc-gen-elixir
+        run: mix escript.install hex protobuf --force
+      - name: Set up buf
+        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: buf generate
+        run: PATH="${HOME}/.mix/escripts:${PATH}" buf generate specs/orchestrator
+      - name: Check for drift
+        run: git diff --exit-code apps/orchestrator/apps/avsa/lib/avsa/proto/avsa.pb.ex
+
+  # ---------------------------------------------------------------------------
+  # Frontend codegen drift — regenerates frontend/packages/shared/src/generated.ts
+  # from specs/api/chat.openapi.yaml and fails if the committed file differs.
+  # Catches API spec changes that weren't followed by `pnpm run generate`.
+  # ---------------------------------------------------------------------------
+  codegen-drift:
+    name: codegen-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        with:
+          version: 9
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: pnpm install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Regenerate OpenAPI types
+        working-directory: frontend
+        run: pnpm --filter @avsa/shared run generate
+      - name: Check for drift
+        run: git diff --exit-code frontend/packages/shared/src/generated.ts
+
+  # ---------------------------------------------------------------------------
+  # Security — pip-audit (Python deps) + gitleaks (secrets scan)
+  # ---------------------------------------------------------------------------
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # gitleaks needs full commit history to scan beyond the current tree.
+          fetch-depth: 0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - name: Export locked deps to requirements.txt
+        # pip-audit requires PEP 508 format; uv export converts uv.lock →
+        # requirements.txt so we audit the exact locked versions.
+        run: uv export --frozen --no-dev --no-hashes --format requirements-txt --output-file /tmp/requirements.txt
+      - name: Sync uv venv
+        run: uv sync --frozen
+      - name: pip-audit
+        # scripts/pip-audit.sh reads .pip-audit-allowlist.toml — single source
+        # of truth shared with the local pre-commit hook.
+        run: scripts/pip-audit.sh -r /tmp/requirements.txt
+      - name: Scan for secrets (gitleaks)
+        # Run the pinned gitleaks binary directly (free tier; no licence key
+        # required for personal repos). The download is SHA256-verified against
+        # the published checksums file.
+        env:
+          GITLEAKS_VERSION: "8.21.2"
+        run: |
+          set -euo pipefail
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          curl -sSfL "${base}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tgz
+          curl -sSfL "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt" -o /tmp/gitleaks_sums.txt
+          expected="$(grep 'linux_x64.tar.gz' /tmp/gitleaks_sums.txt | awk '{print $1}')"
+          echo "${expected}  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          /tmp/gitleaks detect --source . --redact --no-banner --exit-code 1

@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# AVSA pre-push hook — two responsibilities:
+#   (a) forward to `git lfs pre-push` so LFS objects upload on push, and
+#   (b) block pushes that update an existing open PR with an empty body
+#       (belt-and-suspenders for the server-side pr-form-check workflow;
+#       bypassable via `git push --no-verify` for emergencies).
+#
+# The LFS forward lives here because `just setup` sets core.hooksPath=.githooks,
+# so git ignores anything `git lfs install` writes to .git/hooks/. Without this
+# forward, `git push` would silently NOT upload LFS objects.
+#
+# See docs/runbooks/pr-body-quality.md.
+#
+# Git invokes this as: pre-push <remote-name> <remote-url>
+# stdin format (one line per pushed ref):
+#   <local-ref> <local-sha> <remote-ref> <remote-sha>
+
+set -euo pipefail
+
+# Capture the push-ref list once so we can replay it to both LFS and the
+# PR-body check.
+stdin_data=$(cat)
+
+# 1. Forward to `git lfs pre-push` (uploads LFS objects). Missing `git-lfs`
+#    when the repo has LFS-tracked content would push commit pointers without
+#    their objects — fail loudly so the user installs it.
+if command -v git-lfs >/dev/null 2>&1; then
+    printf '%s' "$stdin_data" | git lfs pre-push "$@"
+else
+    echo "error: 'git-lfs' not installed; LFS-tracked files would push without"
+    echo "       their objects. Install via 'just setup' (or 'brew install git-lfs')." >&2
+    exit 1
+fi
+
+# 2. Missing `gh` CLI: warn and pass. CI form-check still gates server-side.
+if ! command -v gh >/dev/null 2>&1; then
+    echo "warning: 'gh' CLI not installed; skipping local PR-body check."
+    echo "         Install via 'just setup' (or 'brew install gh')."
+    exit 0
+fi
+
+while IFS= read -r local_ref _local_sha remote_ref _remote_sha; do
+    # 2. Skip pushes to main, tags, and refs that aren't a branch head.
+    case "$remote_ref" in
+        refs/heads/main) continue ;;
+        refs/tags/*) continue ;;
+    esac
+
+    branch="${local_ref#refs/heads/}"
+    if [[ "$branch" == "$local_ref" ]]; then
+        # local_ref wasn't a refs/heads/* ref (detached HEAD, etc.). Skip.
+        continue
+    fi
+
+    # 3. Find an open PR with this branch as head. If `gh` errors (auth /
+    #    network), warn and skip — CI form-check still gates server-side.
+    if ! pr_json=$(gh pr list --head "$branch" --state open --json number,body --jq '.[0]' 2>/dev/null); then
+        echo "warning: 'gh pr list' failed (auth or network?); skipping local check for $branch."
+        continue
+    fi
+
+    # 4. No PR yet (first push for this branch): no-op. The form-check workflow
+    #    handles the create-time case server-side.
+    if [[ -z "$pr_json" || "$pr_json" == "null" ]]; then
+        continue
+    fi
+
+    pr_number=$(echo "$pr_json" | jq -r '.number')
+    pr_body=$(echo "$pr_json" | jq -r '.body // ""')
+
+    # 5. If the body is whitespace-only, fail with a clear remediation message.
+    trimmed=$(echo "$pr_body" | tr -d '[:space:]')
+    if [[ -z "$trimmed" ]]; then
+        cat >&2 <<EOF
+error: PR #$pr_number on branch '$branch' has an empty body.
+Pushing would update an empty PR.
+
+To remediate:
+  gh pr edit $pr_number --body-file <(cat .github/PULL_REQUEST_TEMPLATE.md)
+then edit the body with the actual content and re-push.
+
+To bypass (emergency only):
+  git push --no-verify
+See docs/runbooks/pr-body-quality.md "Bypassing the pre-push hook" for context.
+EOF
+        exit 1
+    fi
+done <<< "$stdin_data"
+
+exit 0

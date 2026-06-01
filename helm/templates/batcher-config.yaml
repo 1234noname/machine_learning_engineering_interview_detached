@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: batcher-avsa-toml
+  namespace: {{ .Release.Namespace }}
+data:
+  avsa.toml: |
+    [batcher]
+    max_batch_size = {{ if .Values.batcher }}{{ .Values.batcher.maxBatchSize | default 8 }}{{ else }}8{{ end }}
+    max_wait_ms = {{ if .Values.batcher }}{{ .Values.batcher.maxWaitMs | default 50 }}{{ else }}50{{ end }}
+    vit_service_url = "{{ if .Values.batcher }}{{ .Values.batcher.vitServiceUrl | default "http://localhost:8090/embed" }}{{ else }}http://localhost:8090/embed{{ end }}"
+    vit_timeout_ms = {{ if .Values.batcher }}{{ .Values.batcher.vitTimeoutMs | default 30000 }}{{ else }}30000{{ end }}
+    num_drain_tasks = {{ if .Values.batcher }}{{ .Values.batcher.numDrainTasks | default 1 }}{{ else }}1{{ end }}

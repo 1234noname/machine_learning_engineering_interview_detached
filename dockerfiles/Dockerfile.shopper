@@ -1,0 +1,69 @@
+FROM node:20.19.2-bookworm-slim AS deps
+
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/pnpm-workspace.yaml frontend/pnpm-lock.yaml ./frontend/
+COPY frontend/apps/shopper/package.json ./frontend/apps/shopper/
+COPY frontend/packages/shared/package.json ./frontend/packages/shared/
+
+RUN pnpm --dir /app/frontend install --frozen-lockfile
+
+
+FROM node:20.19.2-bookworm-slim AS builder
+
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+
+WORKDIR /app
+
+COPY --from=deps /app/frontend/node_modules ./frontend/node_modules
+COPY --from=deps /app/frontend/apps/shopper/node_modules ./frontend/apps/shopper/node_modules
+COPY --from=deps /app/frontend/packages/shared/node_modules ./frontend/packages/shared/node_modules
+
+COPY specs/ ./specs/
+COPY frontend/ ./frontend/
+
+# Generate TypeScript types from the OpenAPI spec before the Next.js build so
+# @avsa/shared resolves to concrete types (not any) during tsc type-checking.
+RUN pnpm --dir /app/frontend --filter @avsa/shared run generate
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# AVSA_API_URL is read by next.config.js at build time to populate
+# images.remotePatterns. Defaults to localhost for local builds.
+ARG AVSA_API_URL=http://localhost:8080
+ENV AVSA_API_URL=${AVSA_API_URL}
+
+# External link URLs baked into the navbar at build time.
+# NEXT_PUBLIC_ prefix makes them available in client-side bundles.
+ARG NEXT_PUBLIC_GRAFANA_URL=""
+ENV NEXT_PUBLIC_GRAFANA_URL=${NEXT_PUBLIC_GRAFANA_URL}
+ARG NEXT_PUBLIC_API_DOCS_URL=""
+ENV NEXT_PUBLIC_API_DOCS_URL=${NEXT_PUBLIC_API_DOCS_URL}
+
+RUN pnpm --dir /app/frontend --filter @avsa/shopper run build
+
+RUN cp -r frontend/apps/shopper/.next/static \
+        frontend/apps/shopper/.next/standalone/apps/shopper/.next/static && \
+    cp -r frontend/apps/shopper/public \
+        frontend/apps/shopper/.next/standalone/apps/shopper/public
+
+
+FROM node:20.19.2-bookworm-slim AS runtime
+
+RUN groupadd --gid 1001 nextjs && \
+    useradd --uid 1001 --gid 1001 --no-create-home nextjs
+
+WORKDIR /app
+
+COPY --from=builder --chown=nextjs:nextjs /app/frontend/apps/shopper/.next/standalone ./
+COPY --from=builder --chown=nextjs:nextjs /app/frontend/apps/shopper/.next/static ./apps/shopper/.next/static
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT=3000 NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0
+
+CMD ["node", "apps/shopper/server.js"]

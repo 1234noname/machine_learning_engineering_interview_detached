@@ -1,0 +1,35 @@
+groups:
+  - name: avsa-local
+    rules:
+      - alert: ModelHighErrorRate
+        expr: |
+          rate(http_requests_total{job="avsa-model",status=~"5.."}[5m])
+          / rate(http_requests_total{job="avsa-model"}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Model error rate above 5% for 2 minutes"
+          runbook: "docs/runbooks/model-error-rate.md"
+      - alert: ModelLatencyRegression
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{job="avsa-model"}[5m]))
+          ) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Model p95 latency above 2s for 5 minutes"
+          runbook: "docs/runbooks/model-latency.md"
+      - alert: ConversationLatencyRegression
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(avsa_conversation_latency_seconds_bucket[5m]))
+          ) > 3.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Conversation p95 latency above 3.5s for 5 minutes"
+          runbook: "docs/runbooks/conversation-latency.md"

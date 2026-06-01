@@ -1,0 +1,6 @@
+[toolchain]
+# Pinned to a specific stable release so all contributors and CI use the same
+# compiler. Update deliberately (open a PR, review the changelog, run the full
+# test suite before merging). See ADR 0001 for the Rust runtime rationale.
+channel = "1.87.0"
+components = ["clippy", "rustfmt"]

@@ -1,0 +1,5 @@
+# Backend configuration for `terraform init -backend-config=backend.tfvars`.
+# Copy to `backend.tfvars` and fill in. `backend.tfvars` is gitignored.
+
+bucket = "<your-prod-project-id>-terraform-state"
+prefix = "prod/shared"

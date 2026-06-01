@@ -1,17 +1,21 @@
-from PIL import Image, ImageDraw
+import random
 from io import BytesIO
+
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-import random
+from PIL import Image, ImageDraw
+from prometheus_fastapi_instrumentator import Instrumentator
 
 api = FastAPI()
+Instrumentator().instrument(api).expose(api)
+
 
 @api.get(
     "/{image_id}.jpg",
     summary="Download simulation image",
     description="Generates an image for download.",
 )
-async def download_image(image_id: str):
+async def download_image(image_id: str) -> StreamingResponse:
     # Seed the random number generator for determinism
     seed = hash(image_id)
     random.seed(seed)

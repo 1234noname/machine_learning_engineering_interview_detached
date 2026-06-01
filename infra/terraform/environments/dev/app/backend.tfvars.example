@@ -1,0 +1,10 @@
+# Backend configuration for `terraform init -backend-config=backend.tfvars`.
+# Copy to `backend.tfvars` and fill in. `backend.tfvars` is gitignored.
+#
+# For ad-hoc dev applies: prefix = "dev/app".
+# For #8's PR-ephemeral applies: the workflow sets prefix at init time to
+#   "dev/app/pr-${{ github.event.number }}" via -backend-config inline,
+#   overriding this default. PR-1 and PR-100 thus have separate state.
+
+bucket = "<your-project-id>-terraform-state"
+prefix = "dev/app"

@@ -1,0 +1,8 @@
+# Backend configuration for `terraform init -backend-config=backend.tfvars`.
+# Copy to `backend.tfvars` and fill in. `backend.tfvars` is gitignored.
+#
+# Convention: bucket name = "<project-id>-terraform-state" so a fresh project
+# gets a uniquely-named bucket without global-name collisions.
+
+bucket = "<your-project-id>-terraform-state"
+prefix = "dev/shared"

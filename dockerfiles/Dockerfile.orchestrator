@@ -1,0 +1,45 @@
+FROM hexpm/elixir:1.16.3-erlang-26.2.5.8-debian-bullseye-20260518-slim AS builder
+
+RUN apt-get update && apt-get install -y build-essential git && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN mix local.hex --force && mix local.rebar --force
+
+ENV MIX_ENV=prod
+
+COPY apps/orchestrator/mix.exs apps/orchestrator/mix.lock ./
+COPY apps/orchestrator/apps/avsa/mix.exs ./apps/avsa/mix.exs
+COPY apps/orchestrator/apps/elixir_anthropic/mix.exs ./apps/elixir_anthropic/mix.exs
+
+RUN mix deps.get --only $MIX_ENV
+RUN mix deps.compile
+
+COPY apps/orchestrator/ ./
+
+RUN mix compile
+# No named release configured; `mix release` produces a release named after
+# the umbrella (avsa). The CMD references ./bin/avsa which this generates.
+RUN mix release
+
+
+FROM debian:bullseye-slim AS runtime
+
+RUN apt-get update && apt-get install -y libssl1.1 libncurses5 && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --gid 10001 avsa && useradd --uid 10001 --gid avsa --no-create-home avsa
+
+WORKDIR /app
+
+COPY --from=builder /app/_build/prod/rel/avsa ./
+COPY specs/verifier/ /specs/verifier/
+
+RUN chown -R avsa:avsa /app
+
+USER avsa
+
+ENV RELEASE_DISTRIBUTION=none
+
+EXPOSE 50051 4000 9568
+
+CMD ["./bin/avsa", "start"]

@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: batcher-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: batcher-service
+  template:
+    metadata:
+      labels:
+        app: batcher-service
+    spec:
+      containers:
+        - name: batcher-service
+          image: "{{ .Values.image_batcher.repository }}:{{ .Values.image_batcher.tag }}{{- if .Values.image_batcher.digest }}@{{ .Values.image_batcher.digest }}{{- end }}"
+          imagePullPolicy: {{ .Values.image_batcher.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - secretRef:
+                name: avsa-env
+                optional: true
+          volumeMounts:
+            - name: avsa-toml
+              mountPath: /app/config/avsa.toml
+              subPath: avsa.toml
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "500m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+      volumes:
+        - name: avsa-toml
+          configMap:
+            name: batcher-avsa-toml
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: batcher-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: batcher-service
+spec:
+  selector:
+    app: batcher-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8001
+  type: {{ if .Values.batcher }}{{ .Values.batcher.serviceType | default "LoadBalancer" }}{{ else }}LoadBalancer{{ end }}

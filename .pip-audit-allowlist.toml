@@ -1,0 +1,79 @@
+# Single source of truth for pip-audit CVE allowlist.
+#
+# Both the pre-commit hook and the CI security-audit job read this file
+# via scripts/pip-audit.sh. Keep the two-list shape — the categorisation
+# is the whole point.
+#
+# `permanent`  — no upstream fix coming OR the project's design makes the
+#                attack vector inapplicable. Each entry MUST have a
+#                `mitigation` field documenting why it's safe.
+# `temporary`  — fix exists upstream but we're stuck on an older pin.
+#                Each entry MUST have `fix_version` and `tracked_by`
+#                (issue, ticket, or PR reference) so it can't rot
+#                silently. Periodic sweep: re-run pip-audit, drop entries
+#                that the latest lock has already cleared.
+#
+# Schema (enforced by scripts/pip-audit.sh):
+#   [[permanent]]
+#   id          = "CVE-..."   # required
+#   package     = "name"      # required (audit trail)
+#   mitigation  = "..."       # required
+#
+#   [[temporary]]
+#   id          = "CVE-..."    # required
+#   package     = "name"       # required
+#   fix_version = "x.y.z"      # required
+#   tracked_by  = "#NN"        # required
+#   not_after   = "YYYY-MM-DD" # optional; wrapper errors if today > this date
+#
+# After #13's ray bump (2.41 → 2.55) and pytest bump (8 → 9.0.3+) the
+# allowlist is empty. Don't add an entry without a mitigation or a
+# tracked fix — that's the whole reason this file exists.
+permanent = [
+    # flask-cors: log injection via CRLF only when debug logging is enabled.
+    # AVSA does not enable debug logging in CI or any deployed environment.
+    {id = "PYSEC-2024-271", package = "flask-cors", mitigation = "Log-injection only reachable when debug logging is on. AVSA does not enable flask-cors debug logging."},
+
+    # torch: profiler DoS — only triggered if torch.profiler.profile is used
+    # without calling profiler.stop(). AVSA does not instrument with torch.profiler.
+    {id = "PYSEC-2025-210", package = "torch", mitigation = "Requires torch.profiler.profile usage. AVSA inference path does not call torch.profiler."},
+
+    # torch: JIT vulnerabilities — require torch.jit.script /
+    # jit_module_from_flatbuffer. AVSA loads models via torch.load(), not JIT.
+    {id = "PYSEC-2025-194", package = "torch", mitigation = "Requires torch.jit.script. AVSA does not JIT-compile models."},
+    {id = "PYSEC-2025-196", package = "torch", mitigation = "Requires torch.jit.jit_module_from_flatbuffer. AVSA does not JIT-compile models."},
+
+    # torch: RNN / LSTM utilities — AVSA uses image-classification ResNet,
+    # not recurrent models.
+    {id = "PYSEC-2025-195", package = "torch", mitigation = "Requires torch.lstm_cell. AVSA uses ResNet-based image classification; no RNN."},
+    {id = "PYSEC-2025-193", package = "torch", mitigation = "Requires torch.nn.utils.rnn.unpack_sequence. AVSA does not use RNN utilities."},
+    {id = "PYSEC-2025-192", package = "torch", mitigation = "Requires torch.nn.utils.rnn.pad_packed_sequence. AVSA does not use RNN utilities."},
+
+    # torch: pt2 deserialization — only triggered when loading untrusted model
+    # files from external sources. AVSA loads only weights baked into the image.
+    {id = "PYSEC-2026-139", package = "torch", mitigation = "Deserialization via pt2 loader requires loading untrusted model files. AVSA loads only pre-baked weights from the container image."},
+
+    # torch: mkldnn_max_pool2d DoS — local-only, high complexity; security
+    # policy doubts the issue. AVSA serves the model internally; no untrusted
+    # input reaches pooling config.
+    {id = "PYSEC-2025-191", package = "torch", mitigation = "Local-only DoS via torch.mkldnn_max_pool2d; no untrusted input reaches pooling configuration in AVSA."},
+
+    # torch: CUDA caching allocator teardown — local attack, only triggered by
+    # calling caching_allocator_delete directly. AVSA does not call this API.
+    {id = "PYSEC-2025-197", package = "torch", mitigation = "Requires explicit call to torch.cuda.memory.caching_allocator_delete. AVSA does not call this API."},
+
+    # torch: JIT profiler callbacks — internal API only reachable via
+    # torch.ops.profiler._call_end_callbacks_on_jit_fut. AVSA does not use
+    # JIT or profiler callback paths.
+    {id = "PYSEC-2025-189", package = "torch", mitigation = "Requires torch.ops.profiler._call_end_callbacks_on_jit_fut (internal JIT profiler API). AVSA does not use JIT or profiler callbacks."},
+
+    # torch: quantized sigmoid (nnq_Sigmoid) improper init — local, high
+    # complexity. AVSA model pipeline does not use quantized modules.
+    {id = "PYSEC-2025-190", package = "torch", mitigation = "Requires quantized sigmoid (nnq_Sigmoid). AVSA model does not use quantized modules."},
+]
+[[temporary]]
+id          = "PYSEC-2026-161"
+package     = "starlette"
+fix_version = "1.0.1"
+tracked_by  = "blocked by prometheus-fastapi-instrumentator<=7.1.0 which caps starlette<1.0.0; revisit when a newer release ships"
+not_after   = "2026-11-22"

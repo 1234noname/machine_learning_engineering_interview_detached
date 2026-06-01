@@ -1,0 +1,8 @@
+version: v1
+# Generates Elixir proto bindings from specs/orchestrator/avsa.proto.
+# Run: just proto-gen
+# The output file (avsa.pb.ex) is committed so CI can diff it for drift.
+plugins:
+  - name: elixir
+    out: apps/orchestrator/apps/avsa/lib/avsa/proto
+    opt: plugins=grpc

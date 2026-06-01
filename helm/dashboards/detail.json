@@ -1,0 +1,430 @@
+{
+  "uid": "avsa-detail",
+  "title": "AVSA Detail — Ops (all metrics)",
+  "tags": ["detail", "ops", "observability"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 100,
+      "type": "text",
+      "title": "Ops detail",
+      "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+      "options": {
+        "mode": "markdown",
+        "content": "Full all-metrics ops surface for AVSA. The curated reviewer narrative lives in **[avsa-baseline](/d/avsa-baseline)**; this dashboard keeps every measured series (per-handler RPS, per-job error rate, tool-latency minutiae, attribute pipeline, circuit breakers, alerts) for operators and on-call. Nothing from the old baseline is lost — it all lives here."
+      }
+    },
+
+    {
+      "id": 1,
+      "type": "row",
+      "title": "HTTP services (API + Model)",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3},
+      "panels": []
+    },
+    {
+      "id": 2,
+      "title": "API — RPS",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (handler) (rate(http_requests_total{job=\"avsa-api\"}[1m]))",
+          "legendFormat": "{{handler}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"tooltip": {"mode": "single"}}
+    },
+    {
+      "id": 3,
+      "title": "API — p50/p95/p99 Latency",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"avsa-api\"}[1m])))", "legendFormat": "p50", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"avsa-api\"}[1m])))", "legendFormat": "p95", "refId": "B"},
+        {"expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"avsa-api\"}[1m])))", "legendFormat": "p99", "refId": "C"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 4,
+      "title": "Model — RPS",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum by (handler) (rate(http_requests_total{job=\"avsa-model\"}[1m]))", "legendFormat": "{{handler}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"tooltip": {"mode": "single"}}
+    },
+    {
+      "id": 5,
+      "title": "Model — p50/p95/p99 Latency",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"avsa-model\"}[1m])))", "legendFormat": "p50", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"avsa-model\"}[1m])))", "legendFormat": "p95", "refId": "B"},
+        {"expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"avsa-model\"}[1m])))", "legendFormat": "p99", "refId": "C"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 6,
+      "title": "Error Rate (per job)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "5xx error rate as a fraction of total requests, broken out per job (avsa-api, avsa-model).",
+      "targets": [
+        {"expr": "sum by (job) (rate(http_requests_total{status=~\"5..\"}[1m])) / sum by (job) (rate(http_requests_total[1m]))", "legendFormat": "{{job}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 7,
+      "title": "Active Alerts",
+      "type": "alertlist",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "options": {
+        "alertName": "",
+        "dashboardAlerts": false,
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 20,
+        "sortOrder": 1,
+        "stateFilter": {"error": true, "firing": true, "noData": false, "normal": false, "pending": false}
+      }
+    },
+
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Orchestrator tools & dispatch",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 28},
+      "panels": []
+    },
+    {
+      "id": 9,
+      "title": "Retrieval Tool — p50/p95 Latency",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "kNN retrieval span duration from avsa_orch_tool_retrieval_duration_seconds (event [:avsa, :orch, :tool, :retrieval, :stop]).",
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le) (rate(avsa_orch_tool_retrieval_duration_seconds_bucket[1m])))", "legendFormat": "p50", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(avsa_orch_tool_retrieval_duration_seconds_bucket[1m])))", "legendFormat": "p95", "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 10,
+      "title": "Attribute Extraction Tool — p50/p95 Latency",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "LLM attribute extraction span duration from avsa_orch_tool_attribute_duration_seconds (event [:avsa, :orch, :tool, :attribute, :stop]).",
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le) (rate(avsa_orch_tool_attribute_duration_seconds_bucket[1m])))", "legendFormat": "p50", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(avsa_orch_tool_attribute_duration_seconds_bucket[1m])))", "legendFormat": "p95", "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 11,
+      "title": "MCP Tool Call Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 37},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "MCP tool dispatch rate from avsa_mcp_tool_call_total (Python API, :8080).",
+      "targets": [
+        {"expr": "rate(avsa_mcp_tool_call_total{tool_name=\"find_similar\"}[1m])", "legendFormat": "find_similar", "refId": "A"},
+        {"expr": "rate(avsa_mcp_tool_call_total{tool_name=\"extract_attributes\"}[1m])", "legendFormat": "extract_attributes", "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 12,
+      "title": "Tool Dispatch Calls (Orchestrator)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 37},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Tool dispatch call rates from avsa_tool_dispatch_find_similar_total and avsa_tool_dispatch_extract_attributes_total (orchestrator, :9568).",
+      "targets": [
+        {"expr": "rate(avsa_tool_dispatch_find_similar_total[1m])", "legendFormat": "find_similar", "refId": "A"},
+        {"expr": "rate(avsa_tool_dispatch_extract_attributes_total[1m])", "legendFormat": "extract_attributes", "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 13,
+      "title": "Verifier Pass/Fail Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 45},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Per-check verifier outcomes from avsa_verifier_outcome_total{check_name, outcome} (event [:avsa, :orch, :verifier, :check], orchestrator :9568). A sustained non-zero fail rate on any check means proposed responses are being blocked.",
+      "targets": [
+        {"expr": "sum by (check_name) (rate(avsa_verifier_outcome_total{outcome=\"pass\"}[1m]))", "legendFormat": "{{check_name}} pass", "refId": "A"},
+        {"expr": "sum by (check_name) (rate(avsa_verifier_outcome_total{outcome=\"fail\"}[1m]))", "legendFormat": "{{check_name}} fail", "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 14,
+      "title": "Text-Embed — p50/p95 Latency & Errors",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 45},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Text embedding (/embed_text) latency from avsa_text_embed_latency_seconds (event [:avsa, :text_embed, :complete]) and failure rate from avsa_text_embed_error_total (event [:avsa, :text_embed, :error]), orchestrator :9568.",
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le) (rate(avsa_text_embed_latency_seconds_bucket[1m])))", "legendFormat": "p50", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(avsa_text_embed_latency_seconds_bucket[1m])))", "legendFormat": "p95", "refId": "B"},
+        {"expr": "rate(avsa_text_embed_error_total[1m])", "legendFormat": "errors/s", "refId": "C"}
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "s"},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "errors/s"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}, {"id": "unit", "value": "reqps"}]}
+        ]
+      },
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 15,
+      "type": "row",
+      "title": "ViT batcher & embed pipeline",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 53},
+      "panels": []
+    },
+    {
+      "id": 16,
+      "title": "Embed Error Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 54},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Rate of batcher embed failures from avsa_embed_error_total (event [:avsa, :embed, :error]).",
+      "targets": [
+        {"expr": "rate(avsa_embed_error_total[1m])", "legendFormat": "errors/s", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"fixedColor": "red", "mode": "fixed"}}, "overrides": []},
+      "options": {"tooltip": {"mode": "single"}}
+    },
+    {
+      "id": 17,
+      "title": "Batcher Queue Depth",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 54},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Items pending in the Rust batcher queue from avsa_batcher_queue_depth (gauge). Sustained elevation above max_batch_size=8 means the ViT model is falling behind.",
+      "targets": [
+        {"expr": "avsa_batcher_queue_depth", "legendFormat": "queue depth", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short", "min": 0,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 8}, {"color": "red", "value": 16}]}
+        },
+        "overrides": []
+      },
+      "options": {"tooltip": {"mode": "single"}}
+    },
+    {
+      "id": 18,
+      "title": "Batcher Flush — p50/p95 Latency",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 54},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Rust batcher flush latency from avsa_batcher_flush_latency_seconds (histogram). Rising flush latency alongside rising queue depth means the ViT model is the bottleneck.",
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le) (rate(avsa_batcher_flush_latency_seconds_bucket[1m])))", "legendFormat": "p50", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(avsa_batcher_flush_latency_seconds_bucket[1m])))", "legendFormat": "p95", "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 19,
+      "title": "Audit Write Failures",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 62},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Rate of fire-and-forget audit write failures from avsa_audit_write_failures_total (Python API). Failures are silent by design — this panel makes them visible.",
+      "targets": [
+        {"expr": "rate(avsa_audit_write_failures_total[1m])", "legendFormat": "failures/s", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"fixedColor": "orange", "mode": "fixed"}}, "overrides": []},
+      "options": {"tooltip": {"mode": "single"}}
+    },
+    {
+      "id": 20,
+      "title": "Circuit Breaker Melts",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 62},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Rate of :fuse circuit-breaker melts per breaker from avsa_circuit_melt_total{breaker} (event [:avsa, :circuit, :melt]). An open breaker is otherwise-silent degradation.",
+      "targets": [
+        {"expr": "sum by (breaker) (rate(avsa_circuit_melt_total[1m]))", "legendFormat": "{{breaker}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"fixedColor": "red", "mode": "fixed"}}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 21,
+      "type": "row",
+      "title": " Attribute pipeline",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 70},
+      "panels": []
+    },
+    {
+      "id": 22,
+      "title": "Attribute Source Split (ViT vs LLM)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 71},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Per-attribute source split from avsa_attribute_source_total{attribute, source} (event [:avsa, :attribute, :source]). Proves the offload: category & colour should be source=\"vit\"; formality & occasion source=\"llm\".",
+      "targets": [
+        {"expr": "sum by (attribute, source) (rate(avsa_attribute_source_total[1m]))", "legendFormat": "{{attribute}} / {{source}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"stacking": {"mode": "normal", "group": "A"}}}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 23,
+      "title": "LLM Attribute Calls Narrowed",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 71},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Share of extract_attributes LLM calls NARROWED because the ViT head supplied category/colour, from avsa_attribute_llm_calls_total{narrowed} (event [:avsa, :attribute, :llm_call]). Near 1.0 = offload fully engaged.",
+      "targets": [
+        {"expr": "sum(rate(avsa_attribute_llm_calls_total{narrowed=\"true\"}[5m])) / clamp_min(sum(rate(avsa_attribute_llm_calls_total[5m])), 0.0001)", "legendFormat": "narrowed fraction", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit", "min": 0, "max": 1,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "green", "value": 0.9}]}
+        },
+        "overrides": []
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "horizontal", "textMode": "value_and_name", "graphMode": "area"}
+    },
+    {
+      "id": 24,
+      "title": "ViT Category Prediction Distribution",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 79},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Rate of ViT category-head predictions by label from avsa_attribute_prediction_total{attribute=\"category\", label} (event [:avsa, :attribute, :prediction]). A sudden shift in the mix signals prediction drift.",
+      "targets": [
+        {"expr": "sum by (label) (rate(avsa_attribute_prediction_total{attribute=\"category\"}[5m]))", "legendFormat": "{{label}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 25,
+      "title": "ViT Colour Prediction Distribution",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 79},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Rate of ViT colour-head predictions by label from avsa_attribute_prediction_total{attribute=\"colour\", label} (event [:avsa, :attribute, :prediction]). Watch for the same drift signal as the category panel.",
+      "targets": [
+        {"expr": "sum by (label) (rate(avsa_attribute_prediction_total{attribute=\"colour\"}[5m]))", "legendFormat": "{{label}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 26,
+      "title": "ViT Attribute Confidence (p10/p50)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 87},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "ViT attribute-head confidence quantiles per attribute from avsa_attribute_confidence{attribute} (histogram, event [:avsa, :attribute, :confidence]). A sustained drop — especially in p10 — is an early model-degradation signal. The 0.5 reference line marks low confidence.",
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le, attribute) (rate(avsa_attribute_confidence_bucket[5m])))", "legendFormat": "{{attribute}} p50", "refId": "A"},
+        {"expr": "histogram_quantile(0.10, sum by (le, attribute) (rate(avsa_attribute_confidence_bucket[5m])))", "legendFormat": "{{attribute}} p10", "refId": "B"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short", "min": 0, "max": 1,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 0.5}]},
+          "custom": {"thresholdsStyle": {"mode": "line"}}
+        },
+        "overrides": []
+      },
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 27,
+      "type": "row",
+      "title": "Retrieval quality",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 95},
+      "panels": []
+    },
+    {
+      "id": 28,
+      "title": "Retrieval Empty-Result Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 96},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Fraction of retrieval queries returning zero results, from avsa_retrieval_empty_total over avsa_retrieval_results_count (events [:avsa, :retrieval, :empty] / [:avsa, :retrieval, :results]). Empty results = the shopper sees nothing. The 0.05 line marks the alarm threshold.",
+      "targets": [
+        {"expr": "sum(rate(avsa_retrieval_empty_total[5m])) / clamp_min(sum(rate(avsa_retrieval_results_count[5m])), 0.0001)", "legendFormat": "empty fraction", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit", "min": 0, "max": 1,
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.05}, {"color": "red", "value": 0.2}]},
+          "custom": {"thresholdsStyle": {"mode": "line"}}
+        },
+        "overrides": []
+      },
+      "options": {"tooltip": {"mode": "single"}}
+    },
+    {
+      "id": 29,
+      "title": "Retrieval Result Count (p50/p95)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 96},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Per-query retrieval result-count quantiles from avsa_retrieval_results (histogram, event [:avsa, :retrieval, :results]). SQL LIMIT is 20, so p95 near 20 is healthy. A falling p50 toward 0 corroborates a rising empty-result rate.",
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum by (le) (rate(avsa_retrieval_results_bucket[5m])))", "legendFormat": "p50 results", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(avsa_retrieval_results_bucket[5m])))", "legendFormat": "p95 results", "refId": "B"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    }
+  ]
+}

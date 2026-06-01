@@ -1,0 +1,12 @@
+# Local dev overlay — minikube (no NVIDIA GPU)
+# Zeros out the GPU resource request so the model-service pod can be scheduled
+# on an Apple M4 Pro or any other non-GPU host. This file is intentionally NOT
+# loaded by skaffold.gke.yaml, so the GKE GPU path is unaffected.
+loadtest:
+  enabled: true
+resources:
+  model:
+    limits:
+      nvidia.com/gpu: 0
+    requests:
+      nvidia.com/gpu: 0

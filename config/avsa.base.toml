@@ -1,0 +1,400 @@
+# AVSA — central configuration. Thresholds, budgets, TTLs, and connection
+# settings live here, never as constants in code (system-design.md §17).
+
+[db]
+# Connection string for the local Postgres 16 + pgvector instance brought up
+# by `just db-migrate` (infra/local-db/docker-compose.yml). Override via the
+# DATABASE_URL environment variable in CI and deployed environments — the
+# migrate runner and integration tests read DATABASE_URL, not this file.
+url = "postgresql://avsa:avsa@localhost:5434/avsa"
+
+# SQLAlchemy-style connection pool sizing for the application layer (no code
+# reads these yet — is infrastructure only). pool_size is the
+# number of persistent connections; max_overflow is how many extra
+# connections may be opened transiently under load before callers block.
+pool_size = 5
+max_overflow = 10
+
+[catalog]
+# Number of rows `just seed-catalog` will insert into `catalog.products`.
+# Local-resource cap: 5000 (reduced from 10000 on 2026-05-25 after a crash
+# running the full Fashion200k working set locally). The fashion200k subset
+# manifest (evals/catalog/fashion200k/manifest.json) and the offline embedding
+# pipeline both honour this bound. synthetic-v1 fixtures are unaffected.
+# Raise deliberately only on a machine with headroom for the heavier ViT /
+# pgvector passes that scale with this value.
+seed_count = 5000
+
+# Identifier of the data source used by the seeder. Keep in lockstep with
+# the dataset documented in STAKEHOLDERS.md. Changing this implies a new
+# embedding distribution and invalidates any pre-recorded retrieval
+# baselines.
+source = "fashion200k"
+
+# Storage key (relative to [storage.local] root_path) of the #062 embedding
+# artifact (embeddings.jsonl + manifest.json) the fashion200k seeder joins to.
+# Lets `just seed-catalog` and stack-up seed turnkey without an explicit
+# --embedding-artifact flag (#090 TR3). The dir is committed via Git LFS;
+# content-addressed by the #061/#062 inputs hash.
+embedding_artifact = "embeddings/7decaeecdc769a1a4ab2e758684f740c5607bef0c07e9ac3cc027936f25cb899"
+
+# Hard ceiling on the GET /catalog browse page size. An over-max
+# `limit` is CLAMPED to this value (a soft cap so the browse grid always
+# renders), not rejected — the route never hardcodes this bound. Kept modest
+# so a single page render stays cheap on local resources.
+browse_max_limit = 100
+
+[storage]
+# Storage backend for binary artefacts (catalog images, embedding artefacts,
+# attribute-head weights). Local-only in this branch (project memory: AVSA
+# runs locally); GCS migration is a follow-up issue.
+backend = "local"
+
+[storage.local]
+# Root directory under which LocalStorageBackend writes. Relative paths are
+# resolved from the repo root. Gitignored — bytes never enter git.
+root_path = "./data"
+
+# The HMAC secret used for signed_url tokens is read from the
+# AVSA_STORAGE_HMAC_SECRET environment variable. That name is a code-level
+# constant in avsa_core.storage.local (single source of truth; not configured
+# here — F5). The variable must be set whenever signed_url() is
+# called (the image proxy route in #064 requires it). Unit tests that don't
+# sign may leave it unset.
+
+[storage.signed_url]
+# Bounds for HMAC-signed image-proxy URL lifetimes, in seconds (
+# F-SEC-3). default_ttl_s is used when a caller of signed_url() supplies no
+# explicit ttl_s; max_ttl_s is the hard ceiling — any caller-supplied ttl_s is
+# clamped down to this so a long-lived token can never be minted. Threaded into
+# LocalStorageBackend by avsa_core.storage._build_backend; never hardcoded in
+# code. 300 s (5 min) suits a single page render; 3600 s (1 h) caps abuse.
+default_ttl_s = 300
+max_ttl_s = 3600
+
+[api]
+# Maximum upload size in bytes (10 MiB). Gateway rejects larger payloads
+# before reading the body.
+max_upload_bytes = 10485760
+
+# URL of the Rust batcher service (crates/batcher). The API calls POST
+# /embed here to convert uploaded image bytes into a 768-dim embedding
+# before forwarding to the orchestrator.
+batcher_url = "http://localhost:8081"
+
+[api.rate_limit]
+# Maximum requests per client IP per 60-second sliding window.
+# OpenAPI spec x-rate-limit is documentation only; this value is authoritative.
+requests_per_minute = 60
+
+[db.pool]
+# Ecto connection pool for the AVSA.Repo (Elixir orchestrator).
+# Separate from the Python-layer pool sizing above.
+size = 10
+
+[latency]
+# kNN retrieval p95 budget in milliseconds. RetrievalTool logs a warning if
+# elapsed exceeds this threshold.
+retrieval_knn_ms = 150
+
+[latency.story_001]
+# End-to-end p95 latency target for the  similarity search flow.
+# The per-PR perf gate blocks merges that regress past target * (1 + slack/100).
+target_p95_ms = 3000
+
+# Allowed regression slack as a percentage of the target above.
+pr_gate_slack_pct = 10
+
+[verifier]
+# PII filter: number of regex matches in proposed_response["text"] allowed
+# before the check fails. 0 = zero tolerance.
+pii_threshold = 0
+
+# Maximum number of expired conversation rows in conversations.conversations
+# before the TTL-expiry backlog check fires (system-level verifier).
+conversation_ttl_backlog_max = 1000
+
+[otel]
+# OTLP gRPC exporter endpoint for OpenTelemetry traces and metrics.
+# Phase 3: conversation_id is propagated via raw gRPC metadata (W3C baggage +
+# traceparent). Full OTel SDK integration with automatic instrumentation is Phase 4.
+exporter_endpoint = "http://localhost:4317"
+
+[batcher]
+# Flush the batch when this many image-embed requests have accumulated.
+# At 700ms GKE→Modal RTT + 77 QPS, ~54 requests accumulate per round-trip.
+# max_batch_size=24 is the sweet spot for 3 Modal containers: 64 concurrent
+# users / 24 = 2.7 batches → all 3 containers stay busy. max_batch_size=32
+# leaves one container idle (64/32 = 2 batches exactly) and peaks lower.
+max_batch_size = 24
+
+# Timeout for a single ViT embed call (ms). Covers Modal cold-start + inference.
+vit_timeout_ms = 30000
+
+# Maximum milliseconds to wait before flushing a partial batch.
+# At 50 ms the p50 extra latency added by batching is negligible relative to
+# the  p95 target of 3 000 ms (latency.story_001.target_p95_ms).
+max_wait_ms = 50
+
+# URL of the upstream ViT model service /embed endpoint.
+# Override in deployed environments via AVSA_VIT_URL or equivalent.
+# The model service is defined in apps/model/ (Python+).
+vit_service_url = "http://localhost:8090/embed"
+
+# Number of concurrent drain tasks spawned at batcher startup. Each task
+# maintains one in-flight Modal batch independently. N=1 is the safe local
+# default; prod sets this to match the number of warm Modal GPU containers
+# (see avsa.prod.toml). See docs/qps-optimisation.md §3b for the analysis.
+num_drain_tasks = 1
+
+
+[bench]
+#  QPS benchmark sweep configuration.
+# All matrix values for `just bench-qps` are driven from this section —
+# never hard-coded in Python or shell. Changing these values and re-running
+# the sweep produces a new, reproducible (config-hash-labelled) result.
+
+# Batch sizes to sweep (must be ≤ batcher.max_batch_size).
+# Each entry is tested at every concurrency level below.
+# Override without editing this file: AVSA_BENCH_BATCH_SIZES=1,4,8 just bench-qps
+batch_sizes = [1, 4, 8]
+
+# Locust concurrency levels (number of simulated users) to sweep.
+# Override without editing this file: AVSA_BENCH_CONCURRENCY=1,4,8,16,32 just bench-qps
+concurrency_levels = [1, 4, 8, 16]
+
+# Duration of each locust run in the sweep (seconds).
+run_duration_s = 30
+
+# Ramp-up rate: new users spawned per second at the start of each run.
+spawn_rate = 4
+
+# Allowed QPS regression slack, as a percentage of the recorded baseline QPS,
+# for the  perf gate (evals/qps/perf_gate.py). A benchmark run passes
+# the QPS arm iff measured_qps >= baseline_qps * (1 - pr_gate_qps_slack_pct/100).
+# QPS is hardware-sensitive, so the gate is a regression-vs-same-runner-class
+# check, not a hard absolute throughput bar — this slack is intentionally
+# generous to absorb CI-runner variance (shared ubuntu-latest runners vary
+# significantly run-to-run). 40 = a run is accepted as long as it stays within
+# 40% of the recorded baseline; a larger drop blocks the PR. Config-driven
+# (never a hardcoded constant in the gate function or CI).
+pr_gate_qps_slack_pct = 40.0
+
+# Output directory (relative to repo root) for benchmark JSON results.
+output_dir = "evals/qps/story-018"
+
+# Port of the batcher service targeted by the benchmark.
+# Override via AVSA_BATCHER_URL if the batcher runs on a non-default port.
+batcher_port = 8081
+
+# Measurement-rigor knobs (see docs/qps-local-optimisation.md "Next-wave plan").
+# `n_runs` measured passes per (bs, c) point; the headline `metrics.qps` is the
+# median across those runs and the full per-run array lands in `runs.qps`.
+# `warmup_passes` extra passes run first whose results are discarded — used to
+# warm MPS Metal kernels, the batcher's drain task, and HTTP client pools so
+# the measured passes start from steady state. Defaults here keep the CI
+# perf-gate path single-pass; QPS-optimisation profiles ([bench.prod],
+# [bench.model]) raise these for variance estimation. Env overrides
+# AVSA_BENCH_RUNS and AVSA_BENCH_WARMUP win, same precedence as
+# AVSA_BENCH_BATCH_SIZES / AVSA_BENCH_CONCURRENCY.
+n_runs = 1
+warmup_passes = 0
+
+[bench.targets]
+# — raw-model-QPS vs system-QPS acceptance bars.
+#
+# AVSA measures TWO first-class QPS numbers (see scripts/bench-qps.py --target):
+#   raw model QPS  — locust -> the ViT model service :8090 directly (no batcher),
+#                    the original assignment's literal subject ("maximise model QPS").
+#   system QPS     — locust -> the Rust batcher :8081, which aggregates concurrent
+#                    single-image calls into the plural model batch.
+# The batching layer's payoff is the delta: system_qps / raw_model_qps.
+#
+# These bars are T4 fp32-grounded GPU acceptance targets (read by
+# evals/qps/bench_targets.py — never hardcoded). On CPU/MPS locally the raw and
+# system numbers are close (ViT runs sequentially -> batching adds ~no gain), so
+# CPU/MPS WILL NOT meet these GPU bars — that is expected and recorded, not a
+# hard local CI fail. The GPU-authoritative re-measure is #079 (Phase 3).
+
+# Minimum raw model QPS (model-direct :8090) on a T4 GPU, fp32.
+raw_model_qps_min = 60.0
+
+# Minimum system QPS (batcher-fronted :8081) on a T4 GPU, fp32.
+system_qps_min = 150.0
+
+# Minimum batching speedup (system_qps / raw_model_qps) on a T4 GPU. >1.5x is
+# the bar at which the batcher's kernel-launch amortisation is judged to pay off.
+batching_speedup_min = 1.5
+
+[bench.prod]
+# — prod GPU saturation sweep.
+# Overrides the parent [bench] values when bench-prod.sh passes --bench-section prod.
+# Target endpoint: AVSA_PROD_BATCHER_URL env var (never committed).
+# Wider concurrency ramp to push the A10G to saturation; longer per-point duration
+# for a stable steady-state measurement.
+# batch_sizes=[1]: Story018User always sends 1 image/request so the sweep
+# parameter is noise — batcher max_batch_size is the real knob. Single value
+# eliminates 3x redundant measurement.
+# concurrency_levels: sweep from sub-saturation through overload so the full
+# QPS curve is visible. Peak historically lands at c=64 (5 containers × 24 batch);
+# lower levels (8–32) capture the linear ramp before GPU saturation.
+batch_sizes = [1]
+concurrency_levels = [8, 16, 32, 64, 128, 192, 256]
+run_duration_s = 60
+spawn_rate = 16
+output_dir = "evals/qps/story-018"
+# Multi-run + warmup for stable system-QPS measurement against the live stack.
+# The system path (Locust -> batcher -> model) showed ~30% single-run variance
+# on Apple-MPS dev boxes that masked plausible 10-15% optimisation effects.
+# 1 warmup + 2 measured runs: the warmup brings MPS / batcher / client pools
+# to steady state (without it the first measured pass reads 30-40% high); the
+# 2 measured runs act as an agreement check (per-run spread ≤2% once warm in
+# practice) without paying for a median across 3 nearly-identical samples.
+n_runs = 2
+warmup_passes = 1
+
+[bench.model]
+# Model-direct in-memory benchmark — bench-qps.py --target model.
+# Calls AvsaModel.bench_in_memory via the Modal SDK (no HTTP, no batcher)
+# when the model URL is a Modal HTTPS endpoint; falls back to loading
+# VitEmbedder in-process for local runs. Measures the GPU compute ceiling
+# rather than the network-bound system QPS (that is [bench.prod] via batcher).
+#
+# batch_sizes: sweep of image-per-call counts passed to VitEmbedder.embed().
+#   bs=1 matches real-world single-image requests; larger batches show how
+#   GPU utilisation improves with batching.
+# n_passes: timed embed() calls per batch_size point.  50 gives a stable
+#   measurement in ~3 s on an A10G; raise for tighter confidence intervals.
+batch_sizes = [1, 8, 24]
+n_passes = 50
+output_dir = "evals/qps/story-018"
+# In-process probe is far less noisy than the system path (cold-vs-warm
+# delta was <2%); 1 warmup + 2 measured runs keeps methodology consistent
+# with [bench.prod] above and the second measured run flags real outliers.
+n_runs = 2
+warmup_passes = 1
+
+[model]
+# Explicit device placement for ViT inference: cpu | mps | cuda.
+# The committed default is cpu so CI and CPU-only local runs are unaffected;
+# Apple-Silicon local dev sets mps and prod sets cuda — both via the
+# AVSA_MODEL_DEVICE env override (env beats this config value), NOT by editing
+# this default. An unknown value fails fast (avsa_model.device.DeviceError)
+# rather than silently guessing. Stub mode (AVSA_MODEL_STUB=1) never loads the
+# model, so this key is inert there.
+device = "cpu"
+
+# torch.compile optimisation for ViT inference. Requires torch>=2.0.
+# In stub mode (AVSA_MODEL_STUB=1) this is always false — VitEmbedder is never loaded.
+use_compile = false
+
+# torch.compile mode. Options:
+#   "reduce-overhead"   — CUDA graphs, zero per-kernel dispatch (prod default).
+#   "max-autotune"      — Triton tiling search; tested in §3h, regressed.
+#   "torch_tensorrt"    — TRT tactic-search backend via torch.compile; uses
+#                         torch's shape specialisation (one TRT engine per
+#                         exact batch size seen during warmup) + TRT's kernel
+#                         selection. Requires torch_tensorrt in the environment.
+#                         Tested in §3n. See docs/qps-optimisation.md.
+compile_mode = "reduce-overhead"
+
+# HuggingFace attention implementation. Options: "sdpa" (PyTorch scaled_dot_product_attention,
+# default in transformers 4.40+), "flash_attention_2" (requires flash-attn package,
+# true FA2 tiled kernel), "eager" (legacy). See docs/qps-optimisation.md §15.
+attn_implementation = "sdpa"
+
+# fp16 half-precision inference. Reduces memory; equivalent embeddings within
+# cosine_threshold. Disabled by default so CI and CPU-only deployments are unaffected.
+use_fp16 = false
+
+# bf16 brain-float inference. Same memory saving as fp16 but preserves fp32 exponent
+# range (no overflow/underflow at the tails). Native Tensor Core support on Ampere
+# (A10G, sm_86+). Mutually exclusive with use_fp16; bf16 takes precedence if both set.
+use_bf16 = false
+
+# ONNX Runtime inference with CUDAExecutionProvider. Replaces the torch forward pass
+# with an ORT session built from a torch.onnx export of the model. ORT applies
+# graph-level fusions (LayerNorm, attention, GELU) beyond what torch.compile reaches.
+# Requires onnxruntime-gpu in the environment. Incompatible with torch.compile
+# (use_compile is ignored when use_ort=true). See docs/qps-optimisation.md §3l.
+use_ort = false
+
+# TensorRT FP16 engine inference. Exports to ONNX (eager attn) then compiles a TRT
+# engine with --fp16 and dynamic batch profiles (min=1, opt=8, max=24). TRT performs
+# exhaustive per-A10G kernel selection and integrates CUDA graphs natively — the
+# compiled engine is a single optimised unit. Requires tensorrt and cuda-python in the
+# environment. Mutually exclusive with use_compile and use_ort. GPU (CUDA) only;
+# silently falls back to torch.compile on non-CUDA devices.
+# See docs/qps-optimisation.md §3m.
+use_trt = false
+
+# Cosine similarity threshold for the equivalence test (fp32 vs optimised).
+# Values below this threshold indicate a quality regression.
+equivalence_cosine_threshold = 0.999
+
+# Directory of the trained #067 attribute-head artifact (category + colour
+# linear probes over the frozen 768-d ViT features). The model service loads
+# these heads at startup (real mode only) and applies them to the same
+# L2-normalised embedding /embed returns, yielding category/colour predictions
+# in one backbone pass. The directory is named by the #067 config
+# hash so it is self-identifying; it is gitignored private derived data (the
+# weights come from non-redistributable Fashion200k embeddings — see
+# STAKEHOLDERS.md), reproduced by scripts/train-attribute-heads.py. Path is
+# relative to the repo root. Stub mode (AVSA_MODEL_STUB=1) never loads it.
+attribute_heads_dir = "./data/attribute_heads/e8bcf7394f30b59124167d70b14a7283e28aa614e40e567284c0a8295c2db2de"
+
+[evals.attributes]
+# Maximum allowed absolute top-1 accuracy drop of an optimised model config
+# (fp16 / torch.compile / INT8) versus the fp32 baseline, used by the 
+# classification-accuracy quality gate. This is the classification
+# analogue of [model] equivalence_cosine_threshold: where that gate asserts
+# embeddings stay cosine-equivalent under optimisation, this gate asserts
+# attribute-classification accuracy is not silently traded for speed. The gate
+# passes when optimised top-1 >= baseline top-1 - accuracy_tolerance. Config-
+# driven (never a hardcoded constant); 0.02 = at most a 2-percentage-point
+# absolute top-1 drop is tolerated before an optimisation step is rejected.
+accuracy_tolerance = 0.02
+
+[evals.embedding]
+# Minimum cosine similarity required by `scripts/precompute-embeddings.py
+# --verify` ( DoD sample-equivalence gate). After writing an
+# artifact, --verify re-embeds a sample of rows through the LIVE model
+# service and asserts the freshly-computed vector matches the stored one
+# within this floor (for both image and text modalities). Set just under
+# 1.0 to allow for benign float drift between runs while still catching a
+# model-version mismatch or a corrupt artifact. The number of sampled rows
+# is the CLI's --verify-sample-size (default 5).
+equivalence_min_cosine = 0.9999
+
+[workload.story_021]
+#  realistic mixed-workload profile.
+# These weights control the task mix for Story021ChatUser; they must sum to 1.0.
+# Each weight is the relative probability that a simulated user picks that task.
+#
+#   image_only   — POST /chat with a real test-split image, no text prompt
+#   text_only    — POST /chat with a text-only query (real product title phrase),
+#                  no image upload
+#   image_text   — POST /chat with a real image AND a text refinement prompt
+#   multi_turn   — two-turn sequence: first turn is an image-only POST /chat,
+#                  second turn reuses the returned conversation_id with a text
+#                  refinement (simulates a real discovery session)
+#
+# The embed task set (Story021EmbedUser) drives /embed independently at full
+# saturation (no wait_time), matching Story018User's benchmark posture.
+#
+# Adjust weights to match observed traffic mix; the task set asserts they
+# sum to 1.0 (±1e-9) at import time.
+image_only_weight  = 0.35
+text_only_weight   = 0.25
+image_text_weight  = 0.25
+multi_turn_weight  = 0.15
+
+[text_encoder]
+# CLIP text encoder model (sentence-transformers). clip-ViT-B-32 is preferred
+# because it natively produces 512-dim vectors in the same CLIP space as the
+# image ViT embedder, enabling direct cosine comparison for multimodal retrieval.
+model = "clip-ViT-B-32"
+
+# Output embedding dimension. Must match the model above.
+# clip-ViT-B-32 natively outputs 512-dim; no projection layer required.
+dim = 512

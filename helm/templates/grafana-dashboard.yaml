@@ -1,0 +1,15 @@
+{{- if .Values.monitoring.enabled }}
+# ConfigMap holds the AVSA Grafana dashboard JSON (curated baseline + ops detail).
+# Grafana's sidecar (searchNamespace: ALL) auto-loads any ConfigMap
+# with label grafana_dashboard=1 from any namespace.
+# Source of truth: infra/grafana/*.json (keep in sync with helm/dashboards/*.json).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: avsa-baseline-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    grafana_dashboard: "1"
+data:
+{{ (.Files.Glob "dashboards/*.json").AsConfig | indent 2 }}
+{{- end }}

@@ -15,10 +15,14 @@ spec:
     spec:
       containers:
         - name: api-service
-          image: {{ .Values.image_api.repository }}:{{ .Values.image_api.tag | default "latest" }}
+          image: "{{ .Values.image_api.repository }}:{{ .Values.image_api.tag }}{{- if .Values.image_api.digest }}@{{ .Values.image_api.digest }}{{- end }}"
+          imagePullPolicy: {{ .Values.image_api.pullPolicy | default "IfNotPresent" }}
           ports:
             - containerPort: 80
-          command: ["/app/.venv/bin/fastapi", "run", "api.py", "--port", "8000", "--host", "0.0.0.0"]
+          envFrom:
+            - secretRef:
+                name: avsa-env
+                optional: true
           resources:
             requests:
               memory: "64Mi"
@@ -33,11 +37,14 @@ kind: Service
 metadata:
   name: api-service
   namespace: {{ .Release.Namespace }}
+  labels:
+    app: api-service
 spec:
   selector:
     app: api-service
   ports:
-    - protocol: TCP
+    - name: http
+      protocol: TCP
       port: 80
-      targetPort: 8000
+      targetPort: 80
   type: ClusterIP

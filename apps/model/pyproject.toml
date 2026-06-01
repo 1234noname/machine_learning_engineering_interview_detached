@@ -1,0 +1,74 @@
+[project]
+name = "avsa-model"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.120,<0.130",
+    "uvicorn[standard]>=0.27,<0.35",
+    "pydantic>=2.6,<3.0",
+    "prometheus-fastapi-instrumentator>=7.0,<8.0",
+]
+
+[project.optional-dependencies]
+model = [
+    "transformers>=4.40,<5.0",
+    "torch>=2.0,<3.0",
+    # torchvision is paired with torch and provides PIL-compatible image
+    # transforms (transforms.v2.Resize, .Normalize, .ToDtype) that replace
+    # HF's ViTFeatureExtractor in the embed preprocess path — see
+    # docs/qps-local-optimisation.md E5. Default on; opt back to HF via
+    # AVSA_MODEL_PREPROCESS=hf.
+    "torchvision>=0.18,<0.25",
+    "Pillow>=10.0,<12.0",
+    "sentence-transformers>=2.7,<4.0",
+    # numpy is already in the resolved real-mode env via torch; declared here as
+    # dep hygiene because avsa_model.heads imports it directly to apply the     # attribute heads. Stub/CI never installs this extra.
+    "numpy>=1.26,<3",
+]
+
+# Real-mode ML deps. `just model-dev` installs these automatically via
+# `uv run --extra model`; the extra stays opt-in so CI + stub mode stay
+# torch-free. Manual install: `uv pip install -e ".[model]"` (Apple Silicon
+# PyPI wheels are CPU/MPS). For Linux/CI CPU-only, add
+# `--extra-index-url https://download.pytorch.org/whl/cpu` — note
+# --extra-index-url, NOT --index-url, or transformers/sentence-transformers
+# (which live on PyPI) won't resolve.
+dev = [
+    "pytest>=8.0,<9.0",
+    "pytest-asyncio>=0.23,<0.25",
+    "httpx>=0.27,<0.30",
+    "ruff>=0.4,<1.0",
+    "mypy>=1.10,<2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/avsa_model"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "ARG", "RUF"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src"]
+# vit.py, text_encoder.py and heads.py require optional extras (torch,
+# transformers, sentence-transformers, numpy) not installed in dev/CI (stub
+# mode). Exclude them so the dev-mode mypy run passes without the model extras;
+# they are real-mode only and never imported in stub/CI.
+exclude = [
+    "src/avsa_model/vit\\.py",
+    "src/avsa_model/text_encoder\\.py",
+    "src/avsa_model/heads\\.py",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

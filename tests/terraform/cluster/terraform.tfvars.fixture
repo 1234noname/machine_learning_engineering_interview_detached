@@ -1,0 +1,15 @@
+# Fixture variable values for modules/cluster/ testing.
+#
+# These are PLACEHOLDER values only — safe strings, no real project IDs,
+# no real credentials, no billable resources. Used with:
+#   terraform plan -var-file=tests/terraform/cluster/terraform.tfvars.fixture
+# during post-implementation plan verification.
+
+project_id               = "avsa-fixture-project"
+github_repository        = "fixture-owner/fixture-repo"
+github_repository_owner  = "fixture-owner"
+region                   = "us-central1"
+enable_gpu_pool          = false
+environment              = "dev"
+deployer_sa_email        = "github-deployer@avsa-fixture-project.iam.gserviceaccount.com"
+subnet_cidr              = "10.0.0.0/20"

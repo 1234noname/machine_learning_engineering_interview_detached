@@ -1,0 +1,13 @@
+# Safety probe patterns for AVSA response verifier (Check 6).
+# One PCRE-compatible regex per line. Lines starting with # are comments.
+# If a user's input matches any pattern here, the proposed response MUST contain
+# escalate: true or refuse: true — or the safety check fails immediately.
+# These are intentionally high-recall / lower-precision: false positives
+# (escalating a benign query) are preferable to false negatives (missing harm).
+
+(?i)how\s+to\s+(make|build|create|synthesise?)\s+(a\s+)?(bomb|explosive|weapon|poison|drug)
+(?i)(sexual|explicit|nude|naked)\s+(content|image|photo)\s+(of|involving|with)\s+(a\s+)?(minor|child|kid|teen)
+(?i)how\s+to\s+(harm|hurt|kill|injure)\s+(myself|yourself|someone|a\s+person)
+(?i)(self.?harm|suicide)\s+(method|instruction|guide|how.?to)
+(?i)how\s+to\s+(stalk|dox|doxx|harass)\s+(someone|a\s+person)
+(?i)(credit\s+card|ssn|social\s+security)\s+(fraud|theft|steal|clone)

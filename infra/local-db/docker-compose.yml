@@ -1,0 +1,37 @@
+# AVSA — local Postgres 16 + pgvector for development and integration tests.
+#
+# Image: pgvector/pgvector is the canonical pgvector-enabled Postgres image
+# (per the pgvector README) and the same one the CI spec-validate-sql job
+# uses. It ships pgvector >= 0.5.0 (required for the HNSW indexes in
+# specs/db/catalog.sql) without an init script. The `:pg16` tag is pinned to
+# an immutable digest for reproducibility (CLAUDE.md: never :latest).
+#
+# Note:  named `ankane/pgvector:v0.7.0`, but that tag does not exist
+# (the ankane/pgvector repo was retired at v0.5.1; publishing moved to
+# pgvector/pgvector). pgvector/pgvector:pg16 satisfies the stated intent and
+# matches the existing CI image. See docs/friction.md.
+#
+# Credentials match config/avsa.toml [db].url
+# (postgresql://avsa:avsa@localhost:5434/avsa).
+# Port 5433 avoids conflicts with a locally-installed Postgres (e.g. Homebrew
+# postgresql@15) that commonly occupies 5432. CI uses the service container
+# directly on 5432 and always sets DATABASE_URL explicitly, so the host port
+# only matters for local developer runs.
+services:
+  db:
+    image: pgvector/pgvector:pg16@sha256:00ba258a66dac104fd5171074a0084462a64a1369d8513f3d0a634e2f24d15bc
+    environment:
+      POSTGRES_USER: avsa
+      POSTGRES_PASSWORD: avsa
+      POSTGRES_DB: avsa
+    ports:
+      - "5434:5432"
+    volumes:
+      - avsa-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avsa -d avsa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  avsa-pgdata:

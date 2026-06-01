@@ -1,0 +1,14 @@
+# Prompt injection patterns for AVSA response verifier (Check 4).
+# One PCRE-compatible regex per line. Lines starting with # are comments.
+# Extend this list as new injection techniques are observed in the wild.
+# Each pattern should be the minimum specific enough to avoid false positives
+# on normal product-discovery text.
+
+(?i)ignore\s+(all\s+)?previous\s+instructions?
+(?i)disregard\s+(all\s+)?previous\s+instructions?
+(?i)you\s+are\s+now\s+(a\s+)?(?!an?\s+AI\b)
+(?i)new\s+system\s+(prompt|instruction)
+(?i)<\s*/?system\s*>
+(?i)\[\s*INST\s*\]
+(?i)###\s*instruction
+(?i)act\s+as\s+(if\s+you\s+are|a\s+)?(un(restricted|censored|filtered)|evil|jailbreak)

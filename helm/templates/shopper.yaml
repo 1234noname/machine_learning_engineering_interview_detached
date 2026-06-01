@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shopper-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shopper-service
+  template:
+    metadata:
+      labels:
+        app: shopper-service
+    spec:
+      containers:
+        - name: shopper-service
+          image: "{{ .Values.image_shopper.repository }}:{{ .Values.image_shopper.tag }}{{- if .Values.image_shopper.digest }}@{{ .Values.image_shopper.digest }}{{- end }}"
+          imagePullPolicy: {{ .Values.image_shopper.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: avsa-env
+                optional: true
+          env:
+            - name: AVSA_API_URL
+              value: {{ .Values.shopper.apiUrl | quote }}
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shopper-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: shopper-service
+spec:
+  selector:
+    app: shopper-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: {{ .Values.shopper.serviceType | default "ClusterIP" }}

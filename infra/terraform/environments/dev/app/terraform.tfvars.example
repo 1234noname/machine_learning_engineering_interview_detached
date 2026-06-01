@@ -1,0 +1,11 @@
+# Variable values for `terraform plan` / `apply` against the dev app stack.
+# Copy to `terraform.tfvars` (gitignored) and fill in.
+#
+# Alternative: set TF_VAR_project_id env var (read by Terraform automatically).
+
+project_id = "<your-project-id>"
+region     = "us-central1"
+
+# Optional — set by workflows, leave empty for ad-hoc applies:
+# name_suffix = ""
+# app_image   = ""

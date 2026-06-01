@@ -1,0 +1,49 @@
+prometheus:
+  prometheusSpec:
+    # Watch ServiceMonitors in all namespaces (not just those with matching
+    # helm release labels), so our AVSA ServiceMonitors in the avsa namespace
+    # are scraped even though they belong to a different helm release.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    retention: 15d
+    resources:
+      requests:
+        memory: 400Mi
+        cpu: 100m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+
+grafana:
+  service:
+    type: LoadBalancer
+  sidecar:
+    dashboards:
+      enabled: true
+      # Scan all namespaces for ConfigMaps labelled grafana_dashboard=1.
+      # The AVSA chart deploys the dashboard ConfigMap in the avsa namespace.
+      searchNamespace: ALL
+      label: grafana_dashboard
+      labelValue: "1"
+  grafana.ini:
+    # Anonymous viewer access — reviewer can see dashboards without logging in.
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer
+  # adminPassword is injected via --set in deploy-prod.sh from Secret Manager.
+
+alertmanager:
+  enabled: false
+
+# Disable components not needed for this demo deployment.
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false
+    patch:
+      enabled: false
+  tls:
+    enabled: false
+nodeExporter:
+  enabled: true
+kubeStateMetrics:
+  enabled: true

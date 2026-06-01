@@ -1,0 +1,12 @@
+-- Migration 006 — drop the dead audit schema.
+--
+-- The audit.events table backed LLM-spend / budget tracking
+-- (BudgetQuery.GetDailySpend), which has been removed: nothing writes or reads
+-- it any longer (the MCP gateway that wrote the only `mcp_tool_call` rows was
+-- consolidated onto the JSON-RPC MCP server, which does not audit). Migration
+-- 003, which created this schema, has been removed.
+--
+-- CASCADE removes the events table and any dependent objects. IF EXISTS makes
+-- this a no-op on a fresh database (where 003 no longer creates the schema) and
+-- idempotent on databases that still carry it.
+DROP SCHEMA IF EXISTS audit CASCADE;

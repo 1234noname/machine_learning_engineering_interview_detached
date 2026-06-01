@@ -1,0 +1,55 @@
+[project]
+name = "avsa-data"
+version = "0.1.0"
+description = "AVSA offline data-prep library: Fashion200k acquisition, catalog seeding, embedding pipeline, attribute-head training."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # avsa-core: shared foundation (storage abstraction) — editable path dep.
+    "avsa-core",
+    "httpx>=0.27,<0.30",
+    # numpy: linear-algebra backend for the attribute-head ridge probe.
+    # Lives here, not in the gateway, now that the trainer is out of avsa_api.
+    "numpy>=1.26,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9.0",
+    "pytest-asyncio>=0.23,<0.25",
+    "ruff>=0.4,<1.0",
+    "mypy>=1.10,<2.0",
+    # respx: mock httpx at the network boundary in acquire_image tests.
+    "respx>=0.21,<1.0",
+]
+
+[tool.uv.sources]
+avsa-core = { path = "../avsa-core", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/avsa_data"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "ARG", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test functions legitimately mirror the camel/upper-case identifier under test.
+"tests/**" = ["N802"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

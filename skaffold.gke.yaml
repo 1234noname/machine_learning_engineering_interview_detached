@@ -1,0 +1,17 @@
+apiVersion: skaffold/v4beta12
+kind: Config
+profiles:
+  - name: gke
+    build:
+      googleCloudBuild:
+        # projectId is not templatable here. Pass --default-repo at invocation:
+        #   skaffold run -f skaffold.gke.yaml --profile=gke \
+        #     --default-repo=REGION-docker.pkg.dev/PROJECT/avsa
+        projectId: ""
+    deploy:
+      helm:
+        releases:
+          - name: avsa
+            chartPath: helm
+            valuesFiles:
+              - helm/values.gke.yaml

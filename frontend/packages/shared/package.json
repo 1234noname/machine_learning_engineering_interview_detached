@@ -1,0 +1,17 @@
+{
+  "name": "@avsa/shared",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "generate": "openapi-typescript ../../../specs/api/chat.openapi.yaml -o src/generated.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.0.0"
+  }
+}

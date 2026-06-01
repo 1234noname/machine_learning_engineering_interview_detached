@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator-service
+  template:
+    metadata:
+      labels:
+        app: orchestrator-service
+    spec:
+      containers:
+        - name: orchestrator-service
+          image: "{{ .Values.image_orchestrator.repository }}:{{ .Values.image_orchestrator.tag }}{{- if .Values.image_orchestrator.digest }}@{{ .Values.image_orchestrator.digest }}{{- end }}"
+          imagePullPolicy: {{ .Values.image_orchestrator.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: grpc
+              containerPort: 50051
+            - name: http
+              containerPort: 4000
+            - name: metrics
+              containerPort: 9568
+          envFrom:
+            - secretRef:
+                name: avsa-env
+                optional: true
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: avsa-env
+                  key: DATABASE_URL
+                  optional: true
+            - name: AVSA_BATCHER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: avsa-env
+                  key: AVSA_BATCHER_URL
+                  optional: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: orchestrator-service
+spec:
+  selector:
+    app: orchestrator-service
+  ports:
+    - name: grpc
+      protocol: TCP
+      port: 50051
+      targetPort: 50051
+    - name: http
+      protocol: TCP
+      port: 4000
+      targetPort: 4000
+    - name: metrics
+      protocol: TCP
+      port: 9568
+      targetPort: 9568
+  type: ClusterIP

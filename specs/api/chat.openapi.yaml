@@ -1,0 +1,381 @@
+openapi: 3.1.0
+info:
+  title: AVSA Chat API
+  version: 0.1.0
+  summary: HTTP contract for the AVSA shopper API gateway.
+  description: |
+    The AVSA gateway exposes the conversational shopping surface (`POST /chat`,
+    `GET /catalog`, `GET /products/{id}`). This document is the single source of
+    truth that the gateway must implement against; drift between
+    this file and a running service is a CI failure.
+
+    The external MCP tool surface (find_similar / extract_attributes) is NOT
+    served here — it is the conformant JSON-RPC server (AVSA.MCP.Server, issue
+), described by `specs/mcp/tools.json` and the MCP JSON-RPC protocol.
+servers:
+  - url: http://localhost:8080
+    description: Local development gateway.
+paths:
+  /chat:
+    post:
+      summary: Stream a chat turn driven by an uploaded image plus text.
+      operationId: postChat
+      description: |
+        Accepts an image upload (multipart `image` field) and an optional text
+        prompt (`text` field). Returns an SSE stream of `ChatEvent` payloads.
+        Each SSE `data:` line contains a JSON object whose `type` field is the
+        discriminator (currently always `product_card`); see the `ChatEvent`
+        schema.
+      x-rate-limit:
+        requests_per_minute: 30
+        burst: 10
+      x-max-request-size:
+        bytes: 10485760
+      parameters:
+        - name: X-Resume-Conversation-Id
+          in: header
+          required: false
+          description: |
+            UUID of an existing conversation to resume. When present and valid,
+            the server uses this value as the conversation_id for the new turn
+            and echoes it back as `X-Conversation-Id` in the response headers.
+            When absent or not a valid UUID, the server generates a fresh UUID
+            and returns it as `X-Conversation-Id`.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+            encoding:
+              image:
+                contentType: image/png, image/jpeg, image/webp
+      responses:
+        "200":
+          description: SSE stream of ChatEvent payloads.
+          headers:
+            X-Conversation-Id:
+              description: |
+                UUID identifying the conversation. Equals the value supplied in
+                `X-Resume-Conversation-Id` when a valid UUID was provided;
+                otherwise a server-generated UUID.
+              schema:
+                type: string
+                format: uuid
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ChatEvent"
+        "400":
+          description: Malformed request (missing image, oversized payload, bad MIME type).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /products/{id}:
+    get:
+      summary: Look up a product card by catalog id.
+      operationId: getProductById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Catalog product identifier (UUID).
+      responses:
+        "200":
+          description: Product card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductCard"
+        "404":
+          description: Product not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /catalog:
+    get:
+      summary: Browse the catalog as a paginated, stably-ordered page of products.
+      operationId: getCatalog
+      description: |
+        Returns a windowed page of products from `catalog.products` for the
+        shopper landing's browse grid. Results are ordered by a
+        stable key (`id`) so paging is gap-free and dup-free across pages.
+
+        Pagination contract:
+          - `limit` over the configured maximum is CLAMPED to that maximum (a
+            soft cap, not a client error) so the grid always renders a page;
+            the response `limit` reflects the clamped value.
+          - `page < 1` / `limit < 1` are malformed pagination → 422.
+          - a page past the end returns 200 with an empty `items` list.
+
+        Each item's `image_url` is the private `/images/{key}` proxy path SIGNED
+        at read time (`?token=…&expires=…`), reusing the  signing
+        surface — never a public retailer URL.
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: 1-based page number. Must be >= 1 (else 422).
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          description: |
+            Page size. Must be >= 1 (else 422); an over-max value is clamped to
+            the configured ceiling (`[catalog] browse_max_limit`).
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+      responses:
+        "200":
+          description: A paginated page of catalog products.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogPage"
+        "422":
+          description: Malformed pagination (`page < 1` or `limit < 1`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /images/{id}:
+    get:
+      summary: Serve a private catalog image behind a signed, time-limited token.
+      operationId: getImage
+      description: |
+        Streams a Fashion200k subset image from private, access-controlled
+        storage. Access is never public/anonymous: the caller must
+        present a `token` (HMAC) and an `expires` (absolute Unix seconds) pair
+        issued by the storage backend's `signed_url`. The `id` path parameter is
+        the storage key and may contain slashes (multi-segment Fashion200k id).
+        A missing object degrades gracefully to a PNG placeholder so the UI
+        layout does not break.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Storage key for the image (may contain '/'; multi-segment).
+          schema:
+            type: string
+        - name: token
+          in: query
+          required: false
+          description: |
+            HMAC token issued by the storage backend for this id. Declared
+            optional so the route can return a controlled 400
+            (`missing_signed_url_params`) when it is absent, rather than
+            FastAPI's default 422 for a missing required query parameter.
+          schema:
+            type: string
+        - name: expires
+          in: query
+          required: false
+          description: |
+            Absolute Unix-seconds expiry the token was signed with. Declared
+            optional for the same reason as `token`: a missing value yields a
+            controlled 400, not a 422.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The stored image bytes.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Missing the required token or expires query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Token invalid, expired, tampered, or bound to a different id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |
+            Valid token but the object is absent; a PNG placeholder is returned
+            so the UI renders a graceful fallback rather than a broken image.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "422":
+          description: |
+            A supplied query parameter failed type validation (e.g. `expires`
+            was present but not an integer). FastAPI returns 422 for malformed
+            (as opposed to absent) parameters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      # image is optional — text-only turns (no image) are supported.
+      # At least one of image or a non-empty text must be present; the server
+      # returns 422 when both are absent/empty.
+      properties:
+        image:
+          type: [string, "null"]
+          format: binary
+          description: >
+            Optional image file (PNG, JPEG, or WebP) uploaded by the shopper.
+            May be omitted for text-only turns.
+        text:
+          type: [string, "null"]
+          description: Optional free-text prompt. Required when image is absent.
+          maxLength: 2000
+    ChatEvent:
+      type: object
+      description: |
+        Discriminated union of the event types streamed over SSE. The `type`
+        field identifies the variant; consumers must switch on `type` to
+        decode the payload.
+
+        `product_card` is currently the only event type that flows end-to-end
+        to the shopper. (The AG-UI event cluster — tool_start, tool_complete,
+        intent_update, layout_hint — and the never-emitted assistant_text /
+        error variants were removed in  when  was cut.)
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum:
+            - product_card
+      discriminator:
+        propertyName: type
+        mapping:
+          product_card: "#/components/schemas/ProductCardEvent"
+      oneOf:
+        - $ref: "#/components/schemas/ProductCardEvent"
+    ProductCardEvent:
+      type: object
+      required: [type, card]
+      properties:
+        type:
+          type: string
+          const: product_card
+        card:
+          $ref: "#/components/schemas/ProductCard"
+    CatalogItem:
+      type: object
+      required: [id, title, category, price_cents, currency, image_url]
+      description: |
+        One product in the catalog browse grid — exactly the
+        browse-grid columns. Prices are ZAR-denominated cents (`price_cents`);
+        `currency` is the constant `"ZAR"` (catalog.products has no currency
+        column). `image_url` is the read-time signed `/images/{key}` proxy path.
+      properties:
+        id:
+          type: string
+          description: Catalog product identifier (UUID).
+        title:
+          type: string
+        category:
+          type: string
+        price_cents:
+          type: integer
+          minimum: 0
+          description: Price in ZAR cents.
+        currency:
+          type: string
+          description: ISO 4217 currency code; constant "ZAR".
+          minLength: 3
+          maxLength: 3
+          example: "ZAR"
+        image_url:
+          type: string
+          description: Read-time signed /images/{key}?token=…&expires=… proxy path.
+    CatalogPage:
+      type: object
+      required: [items, page, limit, total]
+      description: A paginated page of catalog products plus pagination metadata.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogItem"
+        page:
+          type: integer
+          minimum: 1
+          description: 1-based page number echoed from the request.
+        limit:
+          type: integer
+          minimum: 1
+          description: Effective page size after clamping to the configured max.
+        total:
+          type: integer
+          minimum: 0
+          description: Total number of products in the catalog.
+    ProductCard:
+      type: object
+      required: [id, title, price, currency, image_url, category]
+      properties:
+        id:
+          type: string
+          description: Catalog product identifier (UUID).
+        title:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          description: ISO 4217 currency code.
+          minLength: 3
+          maxLength: 3
+          example: "ZAR"
+        image_url:
+          type: string
+          format: uri
+        category:
+          type: string
+        attributes:
+          type: object
+          additionalProperties: true
+          description: |
+            Catalog attributes (colour, material, size, etc.). Schema is
+            catalog-driven and intentionally open.
+        score:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+          description: |
+            Similarity score for retrieval results. Absent on direct
+            product lookups (`GET /products/{id}`).
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true

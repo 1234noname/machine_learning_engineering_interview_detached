@@ -1,0 +1,79 @@
+# Cloud Build context exclusions.
+# This file replaces .gitignore for `gcloud builds submit` — keep it in sync
+# with .gitignore EXCEPT for config/avsa.toml, which must be present in the
+# build context (baked into the API/model images at build time).
+
+# Secrets — never upload to Cloud Build workers.
+.env
+
+# Python build artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+*.egg-info/
+.eggs/
+dist/
+build/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+.hypothesis/
+
+# Node / frontend build artefacts
+node_modules/
+.next/
+*.tsbuildinfo
+
+# Rust build output
+target/
+
+# Elixir/Mix
+apps/*/deps/
+apps/*/_build/
+libs/*/deps/
+libs/*/_build/
+erl_crash.dump
+
+# Terraform local state (never upload)
+infra/terraform/**/.terraform/
+infra/terraform/**/.terraform.lock.hcl
+infra/terraform/**/terraform.tfvars
+infra/terraform/**/backend.tfvars
+infra/terraform/**/*.tfstate
+infra/terraform/**/*.tfstate.*
+infra/terraform/**/*.tfplan
+
+# Large local-only directories
+reading/
+worktrees/
+harness/runs/
+
+# Eval artefacts
+evals/qps/**/bench-*.json
+evals/qps/**/baseline.json
+evals/qps/**/frontier.json
+evals/mcp/discovery-session.json
+
+# Data — never needed in Docker images; seeded into the DB separately.
+data/
+
+# macOS
+.DS_Store
+
+# Generated frontend types (regenerated during build)
+frontend/packages/shared/src/generated.ts
+frontend/apps/shopper/test-results
+
+# Claude Code project memory (local only)
+.claude/

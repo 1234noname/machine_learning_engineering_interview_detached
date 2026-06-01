@@ -1,0 +1,27 @@
+version: v1
+# `lint: use: [DEFAULT]` is the issue-mandated baseline. The `except`
+# block below carves out the five rules that conflict with the proto
+# shape required by :
+#   - PACKAGE_DIRECTORY_MATCH:    buf expects `avsa/orchestrator/v1/` on
+#                                 disk; the issue pins the file at
+#                                 `specs/orchestrator/avsa.proto`.
+#   - SERVICE_SUFFIX:             buf wants `ConversationService`; the
+#                                 issue specifies `service Conversation`.
+#   - RPC_REQUEST_RESPONSE_UNIQUE, RPC_REQUEST_STANDARD_NAME,
+#     RPC_RESPONSE_STANDARD_NAME: both RPCs share
+#                                 `StartConversationRequest` /
+#                                 `ConversationEvent` because the
+#                                 streaming and unary variants serve the
+#                                 same payload shape (one ConversationEvent
+#                                 oneof carries every event type).
+# These exceptions are scoped narrowly — every other STANDARD lint rule
+# remains active and gates future proto changes.
+lint:
+  use:
+    - DEFAULT
+  except:
+    - PACKAGE_DIRECTORY_MATCH
+    - SERVICE_SUFFIX
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME

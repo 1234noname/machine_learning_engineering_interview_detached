@@ -1,0 +1,16 @@
+{
+  "name": "@avsa/workspace",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "lint": "pnpm -r run lint"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "pnpm": {
+    "overrides": {
+      "vite": "^6.4.2",
+      "postcss": "^8.5.10"
+    }
+  }
+}
