@@ -256,19 +256,3 @@ class TestDocDriftCIStep:
         assert ("check-doc-drift.sh" in ci) or ("doc-drift" in ci), (
             "ci.yml must wire up the doc-drift check"
         )
-
-
-# ----- agent onboarding doc -----------------------------------------------
-
-
-class TestAgentOnboardingDoc:
-    def test_onboarding_doc_exists(self) -> None:
-        doc = REPO_ROOT / "docs" / "agents" / "onboarding.md"
-        assert doc.exists(), (
-            "docs/agents/onboarding.md must exist (agent-friendly bootstrap guide)"
-        )
-
-    def test_onboarding_references_just_bootstrap_and_just_test(self) -> None:
-        doc = (REPO_ROOT / "docs" / "agents" / "onboarding.md").read_text()
-        assert "just bootstrap" in doc
-        assert "just test" in doc

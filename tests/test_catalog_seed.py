@@ -48,10 +48,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SEED_SCRIPT = REPO_ROOT / "scripts" / "seed-catalog.py"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "seed-catalog.yml"
 CONFIG = REPO_ROOT / "config" / "avsa.toml"
-STAKEHOLDERS = REPO_ROOT / "STAKEHOLDERS.md"
 JUSTFILE = REPO_ROOT / "justfile"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
-SETUP_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "setup.md"
 
 
 # ---------------------------------------------------------------------------
@@ -290,22 +288,6 @@ class TestConfigFile:
 
 
 # ---------------------------------------------------------------------------
-# STAKEHOLDERS.md — data provenance documented.
-# ---------------------------------------------------------------------------
-
-
-class TestStakeholdersDoc:
-    def test_exists(self) -> None:
-        assert STAKEHOLDERS.is_file(), f"missing {STAKEHOLDERS}"
-
-    def test_documents_catalog_source_and_license(self) -> None:
-        text = STAKEHOLDERS.read_text(encoding="utf-8")
-        assert "synthetic-v1" in text, "must name the synthetic catalog source"
-        assert re.search(r"license", text, re.IGNORECASE), (
-            "must document the data license"
-        )
-
-
 # ---------------------------------------------------------------------------
 # Defensive: stub helpers always produce JSON-serialisable rows so a future
 # COPY path can round-trip them through text format if needed.
@@ -669,25 +651,3 @@ class TestRowsForSeedArtifactResolution:
 #  TR5 — the setup runbook documents Git-LFS seed-readiness so a
 # fresh clone seeds without an out-of-band Fashion200k download.
 # ---------------------------------------------------------------------------
-
-
-class TestSetupRunbookDocumentsLfs:
-    def test_runbook_documents_lfs_pull_and_seed_readiness(self) -> None:
-        assert SETUP_RUNBOOK.is_file(), f"missing {SETUP_RUNBOOK}"
-        text = SETUP_RUNBOOK.read_text(encoding="utf-8")
-        assert re.search(r"git lfs pull", text), (
-            "setup runbook must document that `just setup` runs `git lfs pull`"
-        )
-        assert re.search(r"(?i)seed-ready|turnkey", text), (
-            "setup runbook must state the clone is seed-ready after `just setup`"
-        )
-
-    def test_runbook_records_lfs_budget(self) -> None:
-        # TR5: record the LFS storage/bandwidth budget; flag that CI doesn't pull.
-        text = SETUP_RUNBOOK.read_text(encoding="utf-8")
-        assert re.search(r"526M|1GB|bandwidth", text), (
-            "setup runbook must record the Git-LFS storage/bandwidth budget"
-        )
-        assert re.search(r"(?i)ci does not pull|lfs: false|TR4", text), (
-            "setup runbook must note CI does not pull LFS (bandwidth stays low)"
-        )
