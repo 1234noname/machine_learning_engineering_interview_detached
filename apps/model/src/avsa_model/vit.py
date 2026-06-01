@@ -377,12 +377,12 @@ class VitEmbedder:
     def embed(self, images: list[bytes]) -> list[list[float]]:
         """Decode images, run the backbone, return CLS embeddings (768-d, L2-normalised).
 
-        This is the **embedding-only** path: it runs the backbone forward and the
-        L2-normalisation but does NOT apply the attribute heads. It is the
-        backbone-only reference for the classification QPS-overhead measurement
-: timing this against :meth:embed_with_attributes - which
-        adds only the per-vector head matmul on the same backbone output -
-        isolates the head-compute cost.
+                This is the **embedding-only** path: it runs the backbone forward and the
+                L2-normalisation but does NOT apply the attribute heads. It is the
+                backbone-only reference for the classification QPS-overhead measurement
+        : timing this against :meth:embed_with_attributes - which
+                adds only the per-vector head matmul on the same backbone output -
+                isolates the head-compute cost.
         """
         return self._backbone_embed(images)
 

@@ -161,7 +161,7 @@ class TestKNNSimilaritySearch:
         self, seeded_catalog_db: object
     ) -> None:
         """The HNSW index on catalog.products.embedding must be present.
-        Without it, kNN queries fall back to a seqscan and the 
+        Without it, kNN queries fall back to a seqscan and the
         find_similar p95 latency budget (150 ms) cannot be met at scale."""
         from psycopg import Connection
 

@@ -1,4 +1,4 @@
-""" QPS benchmark results writer.
+"""QPS benchmark results writer.
 
 Reads a locust stats dict (one row from the locust CSV) and a GPU
 utilisation snapshot, then writes a machine-readable JSON result to

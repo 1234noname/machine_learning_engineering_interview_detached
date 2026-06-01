@@ -289,8 +289,7 @@ async def test_real_mode_head_application_matches_baseline() -> None:
         expected_col = predict_baseline(vec, col_weights, col_bias, col_labels)
         prediction = applier.predict(vec)
         assert prediction.category == expected_cat, (
-            f"category drift: expected={expected_cat!r} "
-            f"actual={prediction.category!r}"
+            f"category drift: expected={expected_cat!r} actual={prediction.category!r}"
         )
         assert prediction.colour == expected_col, (
             f"colour drift: expected={expected_col!r} actual={prediction.colour!r}"

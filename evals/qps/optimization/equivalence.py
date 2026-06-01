@@ -1,4 +1,4 @@
-""" embedding-equivalence gate.
+"""embedding-equivalence gate.
 
 The optimisation sweep accepts an fp16/``torch.compile`` step only if its
 embeddings stay cosine-equivalent to the fp32 baseline — ``cosine >= [model]

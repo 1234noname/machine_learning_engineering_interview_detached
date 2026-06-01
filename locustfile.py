@@ -41,8 +41,9 @@ AVSA_MODEL_URL    -- host for ModelUser (default
                      model service port.
 AVSA_API_URL      -- host for ChatUser (default http://localhost:8080).
 AVSA_DATA_ROOT    -- override the local image data root (default: ``data/``
-                     relative to the repo root; used by BatcherUser/ModelUser and ChatUser/EmbedUser
-                     to locate the held-out test-split JPEGs).
+                     relative to the repo root; used by BatcherUser/ModelUser
+                     and ChatUser/EmbedUser to locate the held-out test-split
+                     JPEGs).
 
 Fetch handling
 --------------
@@ -96,7 +97,9 @@ def _load_avsa_toml() -> dict[str, Any]:
         return tomllib.load(fh)
 
 
-def _load_chat_embed_weights(config: dict[str, Any]) -> tuple[float, float, float, float]:
+def _load_chat_embed_weights(
+    config: dict[str, Any],
+) -> tuple[float, float, float, float]:
     """Read chat_embed task weights from config; validate they sum to 1.0."""
     section: dict[str, Any] = config.get("workload", {}).get("chat_embed", {})
     w_img = float(section.get("image_only_weight", 0.35))

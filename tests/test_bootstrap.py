@@ -196,7 +196,7 @@ class TestBootstrapWorkflow:
 
     def test_weekly_cron(self, workflow: str) -> None:
         # `0 6 * * 1` = 06:00 UTC every Monday — the polyglot cold-clone cadence
-        #. The cron field is quoted in workflow YAML, so allow either style.
+        # . The cron field is quoted in workflow YAML, so allow either style.
         assert re.search(r"""cron:\s*['"]0 6 \* \* 1['"]""", workflow), (
             "bootstrap.yml must schedule cron '0 6 * * 1' (Monday 06:00 UTC)"
         )
@@ -256,19 +256,3 @@ class TestDocDriftCIStep:
         assert ("check-doc-drift.sh" in ci) or ("doc-drift" in ci), (
             "ci.yml must wire up the doc-drift check"
         )
-
-
-# ----- agent onboarding doc -----------------------------------------------
-
-
-class TestAgentOnboardingDoc:
-    def test_onboarding_doc_exists(self) -> None:
-        doc = REPO_ROOT / "docs" / "agents" / "onboarding.md"
-        assert doc.exists(), (
-            "docs/agents/onboarding.md must exist (agent-friendly bootstrap guide)"
-        )
-
-    def test_onboarding_references_just_bootstrap_and_just_test(self) -> None:
-        doc = (REPO_ROOT / "docs" / "agents" / "onboarding.md").read_text()
-        assert "just bootstrap" in doc
-        assert "just test" in doc

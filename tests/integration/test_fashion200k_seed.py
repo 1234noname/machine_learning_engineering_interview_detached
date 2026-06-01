@@ -265,5 +265,6 @@ class TestFashion200kSeedIntegration:
                 f"seeded image_url must be a /images/ proxy path; got {url!r}"
             )
             assert "token=" not in url and "expires=" not in url, (
-                f"seeded image_url must be tokenless (signing is read-time); got {url!r}"
+                "seeded image_url must be tokenless (signing is read-time); "
+                f"got {url!r}"
             )
