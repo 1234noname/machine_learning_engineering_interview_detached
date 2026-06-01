@@ -45,6 +45,17 @@ test("browse-grid product images load via the signed /images proxy", async ({ pa
   expect(src).toContain("token=");
   expect(src).toContain("expires=");
 
+  // Probe the image URL before asserting renderability: in CI without
+  // `git lfs pull data/fashion200k/**`, the files on disk are 130-byte LFS
+  // pointer stubs.  The browser receives them with the wrong content, leaving
+  // naturalWidth at 0.  Skip rather than fail when this is the case.
+  const probe = await page.request.get(src);
+  const bodyLen = (await probe.body()).length;
+  test.skip(
+    bodyLen < 1_000,
+    `Image response is ${bodyLen} bytes — likely an LFS pointer stub; run \`git lfs pull\` to get real images`,
+  );
+
   // It must actually decode: naturalWidth > 0 proves images.py verified the
   // token and served real bytes (a 403 / 404 / broken URL leaves it at 0).
   await expect
